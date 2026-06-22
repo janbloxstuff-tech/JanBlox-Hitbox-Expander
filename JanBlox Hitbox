@@ -1,91 +1,117 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
 
-local player = Players.LocalPlayer
+-- Configuration
 local guiEnabled = false
+local teamCheckEnabled = false
+local espEnabled = false
 local headSizeValue = 50
-local targetBodyPart = "Head" 
-local originalSizes = {} -- Tracks default sizes
+local targetBodyPart = "Head"
+local originalSizes = {}
 
--- UI Setup (Same as before)
-local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+-- Setup UI
+local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
 
 local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 220, 0, 200)
+frame.Size = UDim2.new(0, 240, 0, 350)
 frame.Position = UDim2.new(0.1, 0, 0.1, 0)
 frame.Active = true
 frame.Draggable = true
+frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
 
-local toggleBtn = Instance.new("TextButton", frame)
-toggleBtn.Size = UDim2.new(0, 200, 0, 40)
-toggleBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
-toggleBtn.Text = "Hitbox Expander: OFF"
+local title = Instance.new("TextLabel", frame)
+title.Size = UDim2.new(1, 0, 0, 30)
+title.Text = "Hitbox Configuration"
+title.TextColor3 = Color3.new(1, 1, 1)
 
-local swapBtn = Instance.new("TextButton", frame)
-swapBtn.Size = UDim2.new(0, 200, 0, 40)
-swapBtn.Position = UDim2.new(0.05, 0, 0.3, 0)
-swapBtn.Text = "Target: Head"
-
-local upBtn = Instance.new("TextButton", frame)
-upBtn.Size = UDim2.new(0, 95, 0, 40)
-upBtn.Position = UDim2.new(0.05, 0, 0.55, 0)
-upBtn.Text = "+ Size"
-
-local downBtn = Instance.new("TextButton", frame)
-downBtn.Size = UDim2.new(0, 95, 0, 40)
-downBtn.Position = UDim2.new(0.5, 0, 0.55, 0)
-downBtn.Text = "- Size"
-
--- Function to restore original size
-local function restorePart(char, partName)
-	local part = char:FindFirstChild(partName)
-	if part and originalSizes[char.Name .. partName] then
-		part.Size = originalSizes[char.Name .. partName]
-		part.Massless = false
-	end
+local function createBtn(text, pos)
+	local btn = Instance.new("TextButton", frame)
+	btn.Size = UDim2.new(0.9, 0, 0, 40)
+	btn.Position = pos
+	btn.Text = text
+	return btn
 end
+
+local toggleBtn = createBtn("Hitbox: OFF", UDim2.new(0.05, 0, 0.1, 0))
+local swapBtn = createBtn("Target: Head", UDim2.new(0.05, 0, 0.23, 0))
+local teamBtn = createBtn("Team Check: OFF", UDim2.new(0.05, 0, 0.36, 0))
+local espBtn = createBtn("ESP: OFF", UDim2.new(0.05, 0, 0.49, 0))
+local upBtn = createBtn("+ Size", UDim2.new(0.05, 0, 0.62, 0))
+local downBtn = createBtn("- Size", UDim2.new(0.52, 0, 0.62, 0))
+upBtn.Size = UDim2.new(0.42, 0, 0, 40)
+downBtn.Size = UDim2.new(0.42, 0, 0, 40)
 
 -- Logic
-local function modifyPart(char)
-	-- Store original size if not already stored
-	local part = char:FindFirstChild(targetBodyPart)
-	if part and not originalSizes[char.Name .. targetBodyPart] then
-		originalSizes[char.Name .. targetBodyPart] = part.Size
-	end
-
-	if not guiEnabled then 
-		restorePart(char, "Head")
-		restorePart(char, "UpperTorso")
-		return 
+local function updateESP(char)
+	if not char:FindFirstChild("Highlight") and espEnabled then
+		local hl = Instance.new("Highlight", char)
+		hl.FillTransparency = 0.5
+	elseif not espEnabled and char:FindFirstChild("Highlight") then
+		char.Highlight:Destroy()
 	end
 	
-	if char == player.Character then return end
-	
-	-- If swapping, reset the part we are NOT targeting
-	local otherPart = (targetBodyPart == "Head") and "UpperTorso" or "Head"
-	restorePart(char, otherPart)
-
-	if part and part:IsA("BasePart") then
-		part.Size = Vector3.new(headSizeValue, headSizeValue, headSizeValue)
-		part.Massless = true
-		part.CanCollide = false
+	local head = char:FindFirstChild("Head")
+	if head then
+		local bill = head:FindFirstChild("ESP_UI")
+		if espEnabled and not bill then
+			bill = Instance.new("BillboardGui", head)
+			bill.Name = "ESP_UI"
+			bill.Size = UDim2.new(0, 100, 0, 50)
+			bill.StudsOffset = Vector3.new(0, 3, 0)
+			bill.AlwaysOnTop = true
+			local label = Instance.new("TextLabel", bill)
+			label.Size = UDim2.new(1, 0, 1, 0)
+			label.BackgroundTransparency = 1
+			label.TextColor3 = Color3.new(1, 1, 1)
+		end
+		if bill then
+			local hum = char:FindFirstChild("Humanoid")
+			local status = (hum and hum.Health > 0) and math.floor(hum.Health) .. " HP" or "DEAD"
+			bill.TextLabel.Text = char.Name .. "\n" .. status
+		elseif not espEnabled and bill then
+			bill:Destroy()
+		end
 	end
 end
 
-toggleBtn.MouseButton1Click:Connect(function()
-	guiEnabled = not guiEnabled
-	toggleBtn.Text = guiEnabled and "Hitbox Expander: ON" or "Hitbox Expander: OFF"
-	if not guiEnabled then
-		-- Force restore all when turned off
-		for _, p in pairs(Players:GetPlayers()) do
-			if p.Character then 
-				restorePart(p.Character, "Head")
-				restorePart(p.Character, "UpperTorso")
-			end
+local function modifyPart(char)
+	if char == LocalPlayer.Character then return end
+	if teamCheckEnabled and LocalPlayer.Team and char:FindFirstChild("Humanoid") then
+		local otherPlr = Players:GetPlayerFromCharacter(char)
+		if otherPlr and otherPlr.Team == LocalPlayer.Team then return end
+	end
+
+	local part = char:FindFirstChild(targetBodyPart)
+	if part and part:IsA("BasePart") then
+		if not originalSizes[char.Name .. targetBodyPart] then originalSizes[char.Name .. targetBodyPart] = part.Size end
+		if guiEnabled then
+			part.Size = Vector3.new(headSizeValue, headSizeValue, headSizeValue)
+			part.Massless = true
+			part.CanCollide = false
+		else
+			part.Size = originalSizes[char.Name .. targetBodyPart] or Vector3.new(2,1,1)
+			part.Massless = false
 		end
 	end
+end
+
+-- Toggles
+toggleBtn.MouseButton1Click:Connect(function()
+	guiEnabled = not guiEnabled
+	toggleBtn.Text = guiEnabled and "Hitbox: ON" or "Hitbox: OFF"
+end)
+
+teamBtn.MouseButton1Click:Connect(function()
+	teamCheckEnabled = not teamCheckEnabled
+	teamBtn.Text = teamCheckEnabled and "Team Check: ON" or "Team Check: OFF"
+end)
+
+espBtn.MouseButton1Click:Connect(function()
+	espEnabled = not espEnabled
+	espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
 end)
 
 swapBtn.MouseButton1Click:Connect(function()
@@ -96,11 +122,12 @@ end)
 upBtn.MouseButton1Click:Connect(function() headSizeValue += 5 end)
 downBtn.MouseButton1Click:Connect(function() headSizeValue = math.max(1, headSizeValue - 5) end)
 
--- Loop to apply changes consistently
+-- Loop
 RunService.RenderStepped:Connect(function()
 	for _, p in pairs(Players:GetPlayers()) do
-		if p ~= player and p.Character then
+		if p ~= LocalPlayer and p.Character then
 			modifyPart(p.Character)
+			updateESP(p.Character)
 		end
 	end
 end)
