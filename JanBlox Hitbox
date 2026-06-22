@@ -4,96 +4,114 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Configuration
 local config = {
-	HitboxEnabled = false, TeamCheck = false, TargetPart = "Head", HitboxSize = 50,
-	ESPEnabled = false, WS = 16, JP = 50
+    HitboxEnabled = false, TeamCheck = false, ESPEnabled = false,
+    TargetPart = "Head", HitboxSize = 5, WS = 16, JP = 50
 }
 local originalSizes = {}
 
--- UI Setup
+-- Setup UI
 local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
 
 local scrollFrame = Instance.new("ScrollingFrame", screenGui)
-scrollFrame.Size = UDim2.new(0, 250, 0, 400)
+scrollFrame.Size = UDim2.new(0, 260, 0, 400)
 scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
 scrollFrame.CanvasSize = UDim2.new(0, 0, 2, 0)
 scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 
-local function addTitle(text, pos)
-	local t = Instance.new("TextLabel", scrollFrame)
-	t.Size = UDim2.new(1, 0, 0, 30); t.Position = pos; t.Text = text
-	t.TextColor3 = Color3.new(1, 1, 1); t.BackgroundTransparency = 1
+local layout = Instance.new("UIListLayout", scrollFrame)
+layout.Padding = UDim.new(0, 5)
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local function addTitle(text)
+    local t = Instance.new("TextLabel", scrollFrame)
+    t.Size = UDim2.new(0.95, 0, 0, 30); t.Text = text; t.TextColor3 = Color3.new(1, 1, 1)
+    t.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 end
 
-local function addBtn(text, pos)
-	local btn = Instance.new("TextButton", scrollFrame)
-	btn.Size = UDim2.new(0.9, 0, 0, 35); btn.Position = pos; btn.Text = text
-	return btn
+local function addBtn(text)
+    local btn = Instance.new("TextButton", scrollFrame)
+    btn.Size = UDim2.new(0.95, 0, 0, 35); btn.Text = text
+    return btn
 end
 
-addTitle("JanBlox Gui", UDim2.new(0,0,0,0))
-local hitBtn = addBtn("Hitbox: OFF", UDim2.new(0.05, 0, 0, 35))
-local teamBtn = addBtn("Team Check: OFF", UDim2.new(0.05, 0, 0, 75))
-local swapBtn = addBtn("Target: Head", UDim2.new(0.05, 0, 0, 115))
-local upBtn = addBtn("+ Size", UDim2.new(0.05, 0, 0, 155))
-local downBtn = addBtn("- Size", UDim2.new(0.52, 0, 0, 155)); downBtn.Size = UDim2.new(0.42, 0, 0, 35)
+-- Create GUI Layout
+addTitle("JanBlox Gui")
+local hitBtn = addBtn("Hitbox: OFF")
+local teamBtn = addBtn("Team Check: OFF")
+local swapBtn = addBtn("Target: Head")
 
-addTitle("ESP Configuration", UDim2.new(0,0,0,200))
-local espBtn = addBtn("ESP: OFF", UDim2.new(0.05, 0, 0, 235))
+local sizeFrame = Instance.new("Frame", scrollFrame); sizeFrame.Size = UDim2.new(0.95, 0, 0, 35); sizeFrame.BackgroundTransparency = 1
+local upBtn = Instance.new("TextButton", sizeFrame); upBtn.Size = UDim2.new(0.48, 0, 1, 0); upBtn.Text = "+ Size"
+local downBtn = Instance.new("TextButton", sizeFrame); downBtn.Size = UDim2.new(0.48, 0, 1, 0); downBtn.Position = UDim2.new(0.52, 0, 0, 0); downBtn.Text = "- Size"
 
-addTitle("Player Configuration", UDim2.new(0,0,0,280))
-local wsBtn = addBtn("WS: 16", UDim2.new(0.05, 0, 0, 315))
-local jpBtn = addBtn("JP: 50", UDim2.new(0.05, 0, 0, 355))
-local resetBtn = addBtn("Reset WS/JP", UDim2.new(0.05, 0, 0, 395))
+addTitle("ESP Configuration")
+local espBtn = addBtn("ESP: OFF")
+
+addTitle("Player Configuration")
+local wsBtn = addBtn("WS: 16")
+local jpBtn = addBtn("JP: 50")
+local resetBtn = addBtn("Reset WS/JP")
 
 -- Logic Functions
-local function restoreAllParts(char)
-	for _, part in pairs({char:FindFirstChild("Head"), char:FindFirstChild("UpperTorso"), char:FindFirstChild("Torso")}) do
-		if part and originalSizes[char.Name .. part.Name] then
-			part.Size = originalSizes[char.Name .. part.Name]
-			part.Massless = false
-		end
-	end
+local function restorePart(char, partName)
+    local part = char:FindFirstChild(partName)
+    if part and originalSizes[char.Name .. partName] then
+        part.Size = originalSizes[char.Name .. partName]
+        part.Massless = false
+    end
 end
 
--- Main Loop (Throttled for Performance)
-local lastUpdate = 0
-RunService.RenderStepped:Connect(function(dt)
-	lastUpdate += dt
-	if lastUpdate < 0.1 then return end -- Only runs 10 times per second
-	lastUpdate = 0
-	
-	for _, p in pairs(Players:GetPlayers()) do
-		if p == LocalPlayer or not p.Character then continue end
-		
-		-- Hitbox Logic
-		local part = p.Character:FindFirstChild(config.TargetPart)
-		if config.HitboxEnabled and part then
-			if not originalSizes[p.Character.Name .. part.Name] then originalSizes[p.Character.Name .. part.Name] = part.Size end
-			if not config.TeamCheck or (p.Team ~= LocalPlayer.Team) then
-				part.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-				part.Massless = true
-				part.CanCollide = false
-			end
-		else
-			restoreAllParts(p.Character)
-		end
-		
-		-- ESP Logic
-		-- [Insert ESP Update Code Here]
-	end
-	
-	-- Apply WalkSpeed/JumpPower (Bypass)
-	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-		LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
-		LocalPlayer.Character.Humanoid.JumpPower = config.JP
-	end
+local function updateESP(char)
+    local head = char:FindFirstChild("Head")
+    if config.ESPEnabled and head then
+        if not char:FindFirstChild("Highlight") then Instance.new("Highlight", char) end
+        if not head:FindFirstChild("ESP_UI") then
+            local bill = Instance.new("BillboardGui", head); bill.Name = "ESP_UI"; bill.AlwaysOnTop = true
+            bill.Size = UDim2.new(0, 100, 0, 50); bill.StudsOffset = Vector3.new(0, 3, 0)
+            Instance.new("TextLabel", bill).Size = UDim2.new(1,0,1,0).BackgroundTransparency = 1
+        end
+        local hum = char:FindFirstChild("Humanoid")
+        local status = (hum and hum.Health > 0) and math.floor(hum.Health) .. " HP" or "DEAD"
+        head.ESP_UI.TextLabel.Text = char.Name .. "\n" .. status
+    else
+        if char:FindFirstChild("Highlight") then char.Highlight:Destroy() end
+        if head and head:FindFirstChild("ESP_UI") then head.ESP_UI:Destroy() end
+    end
+end
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p == LocalPlayer or not p.Character then continue end
+        local c = p.Character
+        updateESP(c)
+
+        local target = c:FindFirstChild(config.TargetPart)
+        local other = (config.TargetPart == "Head") and "UpperTorso" or "Head"
+        
+        if config.HitboxEnabled and (not config.TeamCheck or p.Team ~= LocalPlayer.Team) and target then
+            if not originalSizes[c.Name .. config.TargetPart] then originalSizes[c.Name .. config.TargetPart] = target.Size end
+            restorePart(c, other) -- Reset non-target
+            target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+            target.Massless = true
+            target.CanCollide = false
+        else
+            restorePart(c, "Head"); restorePart(c, "UpperTorso")
+        end
+    end
+    
+    if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
+        LocalPlayer.Character.Humanoid.JumpPower = config.JP
+    end
 end)
 
--- Button Connections
+-- Buttons
 hitBtn.MouseButton1Click:Connect(function() config.HitboxEnabled = not config.HitboxEnabled; hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") end)
 teamBtn.MouseButton1Click:Connect(function() config.TeamCheck = not config.TeamCheck; teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") end)
+espBtn.MouseButton1Click:Connect(function() config.ESPEnabled = not config.ESPEnabled; espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") end)
 swapBtn.MouseButton1Click:Connect(function() config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head"; swapBtn.Text = "Target: " .. config.TargetPart end)
 upBtn.MouseButton1Click:Connect(function() config.HitboxSize += 5 end)
 downBtn.MouseButton1Click:Connect(function() config.HitboxSize = math.max(1, config.HitboxSize - 5) end)
