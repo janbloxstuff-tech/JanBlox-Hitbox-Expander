@@ -32,27 +32,38 @@ scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollFrame.Visible = true
 
 local layout = Instance.new("UIListLayout", scrollFrame)
+layout.SortOrder = Enum.SortOrder.LayoutOrder -- Force strict layout sorting
 layout.Padding = UDim.new(0, 6)
 layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
+-- Order Tracker to force top-to-bottom alignment
+local layoutOrderCounter = 0
+
 local function addTitle(text)
-    local t = Instance.new("TextLabel", scrollFrame)
+    layoutOrderCounter = layoutOrderCounter + 1
+    local t = Instance.new("TextLabel")
     t.Size = UDim2.new(0.95, 0, 0, 30)
     t.Text = text
     t.TextColor3 = Color3.new(1, 1, 1)
     t.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     t.Font = Enum.Font.SourceSansBold
     t.TextSize = 16
+    t.LayoutOrder = layoutOrderCounter -- Lock index position
+    t.Parent = scrollFrame
+    return t
 end
 
 local function addBtn(text)
-    local btn = Instance.new("TextButton", scrollFrame)
+    layoutOrderCounter = layoutOrderCounter + 1
+    local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0.95, 0, 0, 35)
     btn.Text = text
     btn.TextColor3 = Color3.new(1, 1, 1)
     btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
     btn.Font = Enum.Font.SourceSans
     btn.TextSize = 14
+    btn.LayoutOrder = layoutOrderCounter -- Lock index position
+    btn.Parent = scrollFrame
     return btn
 end
 
@@ -60,6 +71,7 @@ end
 -- Assemble GUI Layout In Your Exact Order
 -- ==========================================
 
+-- 1st Section (Main Header)
 addTitle("JanBlox Gui")
 
 -- 2nd Section
@@ -179,7 +191,6 @@ swapBtn.MouseButton1Click:Connect(function()
 end)
 
 sizeBtn.MouseButton1Click:Connect(function()
-    -- Cycles size from 5 up to 25, then resets to 5
     if config.HitboxSize >= 25 then
         config.HitboxSize = 5
     else
@@ -189,7 +200,6 @@ sizeBtn.MouseButton1Click:Connect(function()
 end)
 
 transBtn.MouseButton1Click:Connect(function()
-    -- Cycles transparency between 0.1 and 0.9
     if config.ESPTransparency >= 0.9 then
         config.ESPTransparency = 0.1
     else
