@@ -4,57 +4,83 @@ local LocalPlayer = Players.LocalPlayer
 
 -- Configuration
 local config = {
-    HitboxEnabled = false, TeamCheck = false, ESPEnabled = false,
-    TargetPart = "Head", HitboxSize = 5, WS = 16, JP = 50, ESPTransparency = 0.5
+    HitboxEnabled = false, 
+    TeamCheck = false, 
+    ESPEnabled = false,
+    TargetPart = "Head", 
+    HitboxSize = 5, 
+    WS = 16, 
+    JP = 50,
+    ESPTransparency = 0.5
 }
 local originalSizes = {}
 
--- UI Setup
-local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+-- Setup UI
+local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local scrollFrame = Instance.new("ScrollingFrame", screenGui)
-scrollFrame.Size = UDim2.new(0, 260, 0, 450)
+scrollFrame.Size = UDim2.new(0, 260, 0, 420)
 scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-scrollFrame.CanvasSize = UDim2.new(0, 0, 2.5, 0)
 scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 6
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.Visible = true
 
--- Use UIListLayout to prevent overlap
-local mainLayout = Instance.new("UIListLayout", scrollFrame)
-mainLayout.Padding = UDim.new(0, 5)
-mainLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+local layout = Instance.new("UIListLayout", scrollFrame)
+layout.Padding = UDim.new(0, 6)
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 
 local function addTitle(text)
     local t = Instance.new("TextLabel", scrollFrame)
-    t.Size = UDim2.new(0.95, 0, 0, 30); t.Text = text; t.TextColor3 = Color3.new(1, 1, 1)
-    t.BackgroundColor3 = Color3.fromRGB(50, 50, 50); t.Font = Enum.Font.Bold
+    t.Size = UDim2.new(0.95, 0, 0, 30)
+    t.Text = text
+    t.TextColor3 = Color3.new(1, 1, 1)
+    t.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+    t.Font = Enum.Font.SourceSansBold
+    t.TextSize = 16
 end
 
 local function addBtn(text)
     local btn = Instance.new("TextButton", scrollFrame)
-    btn.Size = UDim2.new(0.95, 0, 0, 35); btn.Text = text
+    btn.Size = UDim2.new(0.95, 0, 0, 35)
+    btn.Text = text
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
+    btn.Font = Enum.Font.SourceSans
+    btn.TextSize = 14
     return btn
 end
 
--- GUI Elements
+-- ==========================================
+-- Assemble GUI Layout In Your Exact Order
+-- ==========================================
+
 addTitle("JanBlox Gui")
+
+-- 2nd Section
 addTitle("Hitbox Configuration")
 local hitBtn = addBtn("Hitbox: OFF")
-local teamBtn = addBtn("Team Check: OFF")
 local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
+local transBtn = addBtn("ESPTransparency: 0.5")
 
+-- 3rd Section
 addTitle("ESP Configuration")
+local teamBtn = addBtn("Team Check: OFF")
 local espBtn = addBtn("ESP: OFF")
-local transBtn = addBtn("Trans: 0.5")
 
+-- 4th Section
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
-local resetBtn = addBtn("Reset All")
+local resetBtn = addBtn("Reset")
 
--- Logic Functions
+-- Character Handling Utilities
 local function restorePart(char, partName)
     local part = char:FindFirstChild(partName)
     if part and originalSizes[char.Name .. partName] then
@@ -63,55 +89,145 @@ local function restorePart(char, partName)
     end
 end
 
+local function updateESP(char)
+    local head = char:FindFirstChild("Head")
+    if config.ESPEnabled and head then
+        -- Chams / Highlight management
+        local hl = char:FindFirstChild("JanHighlight")
+        if not hl then 
+            hl = Instance.new("Highlight")
+            hl.Name = "JanHighlight"
+            hl.Parent = char
+        end
+        hl.FillTransparency = config.ESPTransparency
+        hl.OutlineTransparency = config.ESPTransparency
+        
+        -- Screen-spaced Billboard placement
+        local bill = head:FindFirstChild("ESP_UI")
+        if not bill then
+            bill = Instance.new("BillboardGui")
+            bill.Name = "ESP_UI"
+            bill.AlwaysOnTop = true
+            bill.Size = UDim2.new(0, 140, 0, 30)
+            bill.StudsOffset = Vector3.new(0, 2.5, 0)
+            bill.Parent = head
+            
+            local lbl = Instance.new("TextLabel")
+            lbl.Name = "InfoLabel"
+            lbl.Size = UDim2.new(1, 0, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = Color3.new(1, 1, 1)
+            lbl.TextSize = 13
+            lbl.Font = Enum.Font.SourceSansBold
+            lbl.TextStrokeTransparency = 0
+            lbl.Parent = bill
+        end
+        
+        local hum = char:FindFirstChild("Humanoid")
+        local status = (hum and hum.Health > 0) and math.floor(hum.Health) .. " HP" or "DEAD"
+        bill.InfoLabel.Text = char.Name .. " [" .. status .. "]"
+    else
+        if char:FindFirstChild("JanHighlight") then char.JanHighlight:Destroy() end
+        if head and head:FindFirstChild("ESP_UI") then head.ESP_UI:Destroy() end
+    end
+end
+
+-- Main Runtime Engine Loop
 RunService.RenderStepped:Connect(function()
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer or not p.Character then continue end
         local c = p.Character
-        local head = c:FindFirstChild("Head")
+        updateESP(c)
 
-        -- Hitbox
         local target = c:FindFirstChild(config.TargetPart)
+        local other = (config.TargetPart == "Head") and "UpperTorso" or "Head"
+        
         if config.HitboxEnabled and (not config.TeamCheck or p.Team ~= LocalPlayer.Team) and target then
-            if not originalSizes[c.Name .. config.TargetPart] then originalSizes[c.Name .. config.TargetPart] = target.Size end
-            restorePart(c, (config.TargetPart == "Head" and "UpperTorso" or "Head"))
-            target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-            target.Massless = true; target.CanCollide = false
-        else
-            restorePart(c, "Head"); restorePart(c, "UpperTorso")
-        end
-
-        -- ESP (Fixed Size)
-        if config.ESPEnabled and head then
-            if not c:FindFirstChild("Highlight") then local hl = Instance.new("Highlight", c); hl.Name = "Highlight" end
-            c.Highlight.FillTransparency = config.ESPTransparency
-            if not head:FindFirstChild("ESP_UI") then
-                local bill = Instance.new("BillboardGui", head); bill.Name = "ESP_UI"; bill.AlwaysOnTop = true
-                bill.Size = UDim2.new(0, 150, 0, 50); bill.StudsOffset = Vector3.new(0, 3, 0)
-                -- Using SizeOffset and ignoring scale for fixed size
-                local lbl = Instance.new("TextLabel", bill); lbl.Size = UDim2.new(1, 0, 1, 0); lbl.BackgroundTransparency = 1; lbl.TextScaled = true
+            if not originalSizes[c.Name .. config.TargetPart] then 
+                originalSizes[c.Name .. config.TargetPart] = target.Size 
             end
-            local hum = c:FindFirstChild("Humanoid")
-            head.ESP_UI.TextLabel.Text = c.Name .. "\n" .. (hum and math.floor(hum.Health) or "DEAD")
+            restorePart(c, other) -- Re-normalize non-targeted fields
+            
+            target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+            target.Massless = true
+            target.CanCollide = false
         else
-            if c:FindFirstChild("Highlight") then c.Highlight:Destroy() end
-            if head and head:FindFirstChild("ESP_UI") then head.ESP_UI:Destroy() end
+            restorePart(c, "Head")
+            restorePart(c, "UpperTorso")
         end
     end
     
-    -- Bypass
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
         LocalPlayer.Character.Humanoid.JumpPower = config.JP
     end
 end)
 
--- Interaction
-hitBtn.MouseButton1Click:Connect(function() config.HitboxEnabled = not config.HitboxEnabled; hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") end)
-teamBtn.MouseButton1Click:Connect(function() config.TeamCheck = not config.TeamCheck; teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") end)
-espBtn.MouseButton1Click:Connect(function() config.ESPEnabled = not config.ESPEnabled; espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") end)
-swapBtn.MouseButton1Click:Connect(function() config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head"; swapBtn.Text = "Target: " .. config.TargetPart end)
-sizeBtn.MouseButton1Click:Connect(function() config.HitboxSize = (config.HitboxSize >= 30) and 5 or (config.HitboxSize + 5); sizeBtn.Text = "Size: " .. config.HitboxSize end)
-transBtn.MouseButton1Click:Connect(function() config.ESPTransparency = (config.ESPTransparency >= 0.9) and 0.1 or (config.ESPTransparency + 0.2); transBtn.Text = "Trans: " .. string.format("%.1f", config.ESPTransparency) end)
-wsBtn.MouseButton1Click:Connect(function() config.WS += 5; wsBtn.Text = "WS: " .. config.WS end)
-jpBtn.MouseButton1Click:Connect(function() config.JP += 5; jpBtn.Text = "JP: " .. config.JP end)
-resetBtn.MouseButton1Click:Connect(function() config.WS = 16; config.JP = 50; config.HitboxSize = 5; wsBtn.Text = "WS: 16"; jpBtn.Text = "JP: 50"; sizeBtn.Text = "Size: 5" end)
+-- ==========================================
+-- Button Bindings & Control Actions
+-- ==========================================
+
+-- Hitbox Configuration Actions
+hitBtn.MouseButton1Click:Connect(function() 
+    config.HitboxEnabled = not config.HitboxEnabled 
+    hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") 
+end)
+
+swapBtn.MouseButton1Click:Connect(function() 
+    config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head" 
+    swapBtn.Text = "Target: " .. config.TargetPart 
+end)
+
+sizeBtn.MouseButton1Click:Connect(function()
+    -- Cycles size from 5 up to 25, then resets to 5
+    if config.HitboxSize >= 25 then
+        config.HitboxSize = 5
+    else
+        config.HitboxSize = config.HitboxSize + 5
+    end
+    sizeBtn.Text = "Size: " .. config.HitboxSize
+end)
+
+transBtn.MouseButton1Click:Connect(function()
+    -- Cycles transparency between 0.1 and 0.9
+    if config.ESPTransparency >= 0.9 then
+        config.ESPTransparency = 0.1
+    else
+        config.ESPTransparency = tonumber(string.format("%.1f", config.ESPTransparency + 0.2))
+    end
+    transBtn.Text = "ESPTransparency: " .. tostring(config.ESPTransparency)
+end)
+
+-- ESP Configuration Actions
+teamBtn.MouseButton1Click:Connect(function() 
+    config.TeamCheck = not config.TeamCheck 
+    teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") 
+end)
+
+espBtn.MouseButton1Click:Connect(function() 
+    config.ESPEnabled = not config.ESPEnabled 
+    espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") 
+end)
+
+-- Player Configuration Actions
+wsBtn.MouseButton1Click:Connect(function() 
+    config.WS = (config.WS >= 100) and 16 or (config.WS + 10)
+    wsBtn.Text = "WS: " .. config.WS 
+end)
+
+jpBtn.MouseButton1Click:Connect(function() 
+    config.JP = (config.JP >= 200) and 50 or (config.JP + 15)
+    jpBtn.Text = "JP: " .. config.JP 
+end)
+
+resetBtn.MouseButton1Click:Connect(function() 
+    config.WS = 16 
+    config.JP = 50 
+    config.HitboxSize = 5
+    config.ESPTransparency = 0.5
+    
+    wsBtn.Text = "WS: 16"
+    jpBtn.Text = "JP: 50"
+    sizeBtn.Text = "Size: 5"
+    transBtn.Text = "ESPTransparency: 0.5"
+end)
