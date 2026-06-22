@@ -10,15 +10,17 @@ local config = {
 local originalSizes = {}
 
 -- Setup UI
-local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local scrollFrame = Instance.new("ScrollingFrame", screenGui)
 scrollFrame.Size = UDim2.new(0, 260, 0, 400)
 scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-scrollFrame.CanvasSize = UDim2.new(0, 0, 2, 0)
+scrollFrame.CanvasSize = UDim2.new(0, 0, 1.5, 0)
 scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+scrollFrame.Visible = true
 
 local layout = Instance.new("UIListLayout", scrollFrame)
 layout.Padding = UDim.new(0, 5)
@@ -43,7 +45,7 @@ local teamBtn = addBtn("Team Check: OFF")
 local swapBtn = addBtn("Target: Head")
 
 local sizeFrame = Instance.new("Frame", scrollFrame); sizeFrame.Size = UDim2.new(0.95, 0, 0, 35); sizeFrame.BackgroundTransparency = 1
-local upBtn = Instance.new("TextButton", sizeFrame); upBtn.Size = UDim2.new(0.48, 0, 1, 0); upBtn.Text = "+ Size"
+local upBtn = Instance.new("TextButton", sizeFrame); upBtn.Size = UDim2.new(0.48, 0, 1, 0); upBtn.Position = UDim2.new(0, 0, 0, 0); upBtn.Text = "+ Size"
 local downBtn = Instance.new("TextButton", sizeFrame); downBtn.Size = UDim2.new(0.48, 0, 1, 0); downBtn.Position = UDim2.new(0.52, 0, 0, 0); downBtn.Text = "- Size"
 
 addTitle("ESP Configuration")
@@ -66,11 +68,22 @@ end
 local function updateESP(char)
     local head = char:FindFirstChild("Head")
     if config.ESPEnabled and head then
-        if not char:FindFirstChild("Highlight") then Instance.new("Highlight", char) end
+        if not char:FindFirstChild("Highlight") then 
+            local hl = Instance.new("Highlight", char) 
+            hl.Name = "Highlight"
+        end
         if not head:FindFirstChild("ESP_UI") then
-            local bill = Instance.new("BillboardGui", head); bill.Name = "ESP_UI"; bill.AlwaysOnTop = true
-            bill.Size = UDim2.new(0, 100, 0, 50); bill.StudsOffset = Vector3.new(0, 3, 0)
-            Instance.new("TextLabel", bill).Size = UDim2.new(1,0,1,0).BackgroundTransparency = 1
+            local bill = Instance.new("BillboardGui", head)
+            bill.Name = "ESP_UI"
+            bill.AlwaysOnTop = true
+            bill.Size = UDim2.new(0, 200, 0, 50)
+            bill.StudsOffset = Vector3.new(0, 3, 0)
+            
+            local lbl = Instance.new("TextLabel", bill)
+            lbl.Size = UDim2.new(1, 0, 1, 0)
+            lbl.BackgroundTransparency = 1
+            lbl.TextColor3 = Color3.new(1, 1, 1)
+            lbl.TextScaled = true
         end
         local hum = char:FindFirstChild("Humanoid")
         local status = (hum and hum.Health > 0) and math.floor(hum.Health) .. " HP" or "DEAD"
@@ -93,12 +106,13 @@ RunService.RenderStepped:Connect(function()
         
         if config.HitboxEnabled and (not config.TeamCheck or p.Team ~= LocalPlayer.Team) and target then
             if not originalSizes[c.Name .. config.TargetPart] then originalSizes[c.Name .. config.TargetPart] = target.Size end
-            restorePart(c, other) -- Reset non-target
+            restorePart(c, other) -- Reset the non-target part
             target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
             target.Massless = true
             target.CanCollide = false
         else
-            restorePart(c, "Head"); restorePart(c, "UpperTorso")
+            restorePart(c, "Head")
+            restorePart(c, "UpperTorso")
         end
     end
     
@@ -108,7 +122,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- Buttons
+-- Button Connections
 hitBtn.MouseButton1Click:Connect(function() config.HitboxEnabled = not config.HitboxEnabled; hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") end)
 teamBtn.MouseButton1Click:Connect(function() config.TeamCheck = not config.TeamCheck; teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") end)
 espBtn.MouseButton1Click:Connect(function() config.ESPEnabled = not config.ESPEnabled; espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") end)
