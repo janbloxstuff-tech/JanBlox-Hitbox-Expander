@@ -4,9 +4,10 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local guiEnabled = false
 local headSizeValue = 50
-local targetBodyPart = "Head" -- Toggle between "Head" and "UpperTorso"
+local targetBodyPart = "Head" 
+local originalSizes = {} -- Tracks default sizes
 
--- UI Setup
+-- UI Setup (Same as before)
 local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
@@ -37,13 +38,35 @@ downBtn.Size = UDim2.new(0, 95, 0, 40)
 downBtn.Position = UDim2.new(0.5, 0, 0.55, 0)
 downBtn.Text = "- Size"
 
+-- Function to restore original size
+local function restorePart(char, partName)
+	local part = char:FindFirstChild(partName)
+	if part and originalSizes[char.Name .. partName] then
+		part.Size = originalSizes[char.Name .. partName]
+		part.Massless = false
+	end
+end
+
 -- Logic
 local function modifyPart(char)
-	if not guiEnabled then return end
-	-- Target specific part, ignore own character
+	-- Store original size if not already stored
+	local part = char:FindFirstChild(targetBodyPart)
+	if part and not originalSizes[char.Name .. targetBodyPart] then
+		originalSizes[char.Name .. targetBodyPart] = part.Size
+	end
+
+	if not guiEnabled then 
+		restorePart(char, "Head")
+		restorePart(char, "UpperTorso")
+		return 
+	end
+	
 	if char == player.Character then return end
 	
-	local part = char:FindFirstChild(targetBodyPart)
+	-- If swapping, reset the part we are NOT targeting
+	local otherPart = (targetBodyPart == "Head") and "UpperTorso" or "Head"
+	restorePart(char, otherPart)
+
 	if part and part:IsA("BasePart") then
 		part.Size = Vector3.new(headSizeValue, headSizeValue, headSizeValue)
 		part.Massless = true
@@ -54,6 +77,15 @@ end
 toggleBtn.MouseButton1Click:Connect(function()
 	guiEnabled = not guiEnabled
 	toggleBtn.Text = guiEnabled and "Hitbox Expander: ON" or "Hitbox Expander: OFF"
+	if not guiEnabled then
+		-- Force restore all when turned off
+		for _, p in pairs(Players:GetPlayers()) do
+			if p.Character then 
+				restorePart(p.Character, "Head")
+				restorePart(p.Character, "UpperTorso")
+			end
+		end
+	end
 end)
 
 swapBtn.MouseButton1Click:Connect(function()
@@ -64,14 +96,11 @@ end)
 upBtn.MouseButton1Click:Connect(function() headSizeValue += 5 end)
 downBtn.MouseButton1Click:Connect(function() headSizeValue = math.max(1, headSizeValue - 5) end)
 
--- Loop to apply changes consistently without bugging out
+-- Loop to apply changes consistently
 RunService.RenderStepped:Connect(function()
-	if guiEnabled then
-		for _, p in pairs(Players:GetPlayers()) do
-			if p ~= player and p.Character then
-				modifyPart(p.Character)
-			end
+	for _, p in pairs(Players:GetPlayers()) do
+		if p ~= player and p.Character then
+			modifyPart(p.Character)
 		end
 	end
 end)
-
