@@ -9,7 +9,7 @@ local config = {
 }
 local originalSizes = {}
 
--- Setup UI
+-- UI Setup
 local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
@@ -20,6 +20,7 @@ scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
 scrollFrame.CanvasSize = UDim2.new(0, 0, 2.5, 0)
 scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 
+-- Use UIListLayout to prevent overlap
 local mainLayout = Instance.new("UIListLayout", scrollFrame)
 mainLayout.Padding = UDim.new(0, 5)
 mainLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -36,13 +37,13 @@ local function addBtn(text)
     return btn
 end
 
--- Layout Order
+-- GUI Elements
 addTitle("JanBlox Gui")
 addTitle("Hitbox Configuration")
 local hitBtn = addBtn("Hitbox: OFF")
 local teamBtn = addBtn("Team Check: OFF")
 local swapBtn = addBtn("Target: Head")
-local sizeBtn = addBtn("Size: 5") -- Middle shows size
+local sizeBtn = addBtn("Size: 5")
 
 addTitle("ESP Configuration")
 local espBtn = addBtn("ESP: OFF")
@@ -62,7 +63,6 @@ local function restorePart(char, partName)
     end
 end
 
--- Main Loop
 RunService.RenderStepped:Connect(function()
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer or not p.Character then continue end
@@ -80,15 +80,15 @@ RunService.RenderStepped:Connect(function()
             restorePart(c, "Head"); restorePart(c, "UpperTorso")
         end
 
-        -- ESP
+        -- ESP (Fixed Size)
         if config.ESPEnabled and head then
             if not c:FindFirstChild("Highlight") then local hl = Instance.new("Highlight", c); hl.Name = "Highlight" end
             c.Highlight.FillTransparency = config.ESPTransparency
             if not head:FindFirstChild("ESP_UI") then
                 local bill = Instance.new("BillboardGui", head); bill.Name = "ESP_UI"; bill.AlwaysOnTop = true
-                bill.Size = UDim2.new(0, 100, 0, 50); bill.StudsOffset = Vector3.new(0, 3, 0)
-                -- Force size to stay constant by not using Scale
-                local lbl = Instance.new("TextLabel", bill); lbl.Size = UDim2.new(1, 0, 1, 0); lbl.BackgroundTransparency = 1
+                bill.Size = UDim2.new(0, 150, 0, 50); bill.StudsOffset = Vector3.new(0, 3, 0)
+                -- Using SizeOffset and ignoring scale for fixed size
+                local lbl = Instance.new("TextLabel", bill); lbl.Size = UDim2.new(1, 0, 1, 0); lbl.BackgroundTransparency = 1; lbl.TextScaled = true
             end
             local hum = c:FindFirstChild("Humanoid")
             head.ESP_UI.TextLabel.Text = c.Name .. "\n" .. (hum and math.floor(hum.Health) or "DEAD")
@@ -98,21 +98,20 @@ RunService.RenderStepped:Connect(function()
         end
     end
     
+    -- Bypass
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
         LocalPlayer.Character.Humanoid.JumpPower = config.JP
     end
 end)
 
--- Controls
+-- Interaction
 hitBtn.MouseButton1Click:Connect(function() config.HitboxEnabled = not config.HitboxEnabled; hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") end)
 teamBtn.MouseButton1Click:Connect(function() config.TeamCheck = not config.TeamCheck; teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") end)
+espBtn.MouseButton1Click:Connect(function() config.ESPEnabled = not config.ESPEnabled; espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") end)
 swapBtn.MouseButton1Click:Connect(function() config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head"; swapBtn.Text = "Target: " .. config.TargetPart end)
-
--- Size and Transparency Buttons (Simple Toggle/Increase logic)
-sizeBtn.MouseButton1Click:Connect(function() config.HitboxSize = (config.HitboxSize >= 20) and 5 or (config.HitboxSize + 5); sizeBtn.Text = "Size: " .. config.HitboxSize end)
+sizeBtn.MouseButton1Click:Connect(function() config.HitboxSize = (config.HitboxSize >= 30) and 5 or (config.HitboxSize + 5); sizeBtn.Text = "Size: " .. config.HitboxSize end)
 transBtn.MouseButton1Click:Connect(function() config.ESPTransparency = (config.ESPTransparency >= 0.9) and 0.1 or (config.ESPTransparency + 0.2); transBtn.Text = "Trans: " .. string.format("%.1f", config.ESPTransparency) end)
-
 wsBtn.MouseButton1Click:Connect(function() config.WS += 5; wsBtn.Text = "WS: " .. config.WS end)
 jpBtn.MouseButton1Click:Connect(function() config.JP += 5; jpBtn.Text = "JP: " .. config.JP end)
 resetBtn.MouseButton1Click:Connect(function() config.WS = 16; config.JP = 50; config.HitboxSize = 5; wsBtn.Text = "WS: 16"; jpBtn.Text = "JP: 50"; sizeBtn.Text = "Size: 5" end)
