@@ -3,131 +3,100 @@ local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Configuration
-local guiEnabled = false
-local teamCheckEnabled = false
-local espEnabled = false
-local headSizeValue = 50
-local targetBodyPart = "Head"
+local config = {
+	HitboxEnabled = false, TeamCheck = false, TargetPart = "Head", HitboxSize = 50,
+	ESPEnabled = false, WS = 16, JP = 50
+}
 local originalSizes = {}
 
--- Setup UI
+-- UI Setup
 local screenGui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
 screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
 
-local frame = Instance.new("Frame", screenGui)
-frame.Size = UDim2.new(0, 240, 0, 350)
-frame.Position = UDim2.new(0.1, 0, 0.1, 0)
-frame.Active = true
-frame.Draggable = true
-frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+local scrollFrame = Instance.new("ScrollingFrame", screenGui)
+scrollFrame.Size = UDim2.new(0, 250, 0, 400)
+scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+scrollFrame.CanvasSize = UDim2.new(0, 0, 2, 0)
+scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1, 0, 0, 30)
-title.Text = "Hitbox Configuration"
-title.TextColor3 = Color3.new(1, 1, 1)
+local function addTitle(text, pos)
+	local t = Instance.new("TextLabel", scrollFrame)
+	t.Size = UDim2.new(1, 0, 0, 30); t.Position = pos; t.Text = text
+	t.TextColor3 = Color3.new(1, 1, 1); t.BackgroundTransparency = 1
+end
 
-local function createBtn(text, pos)
-	local btn = Instance.new("TextButton", frame)
-	btn.Size = UDim2.new(0.9, 0, 0, 40)
-	btn.Position = pos
-	btn.Text = text
+local function addBtn(text, pos)
+	local btn = Instance.new("TextButton", scrollFrame)
+	btn.Size = UDim2.new(0.9, 0, 0, 35); btn.Position = pos; btn.Text = text
 	return btn
 end
 
-local toggleBtn = createBtn("Hitbox: OFF", UDim2.new(0.05, 0, 0.1, 0))
-local swapBtn = createBtn("Target: Head", UDim2.new(0.05, 0, 0.23, 0))
-local teamBtn = createBtn("Team Check: OFF", UDim2.new(0.05, 0, 0.36, 0))
-local espBtn = createBtn("ESP: OFF", UDim2.new(0.05, 0, 0.49, 0))
-local upBtn = createBtn("+ Size", UDim2.new(0.05, 0, 0.62, 0))
-local downBtn = createBtn("- Size", UDim2.new(0.52, 0, 0.62, 0))
-upBtn.Size = UDim2.new(0.42, 0, 0, 40)
-downBtn.Size = UDim2.new(0.42, 0, 0, 40)
+addTitle("JanBlox Gui", UDim2.new(0,0,0,0))
+local hitBtn = addBtn("Hitbox: OFF", UDim2.new(0.05, 0, 0, 35))
+local teamBtn = addBtn("Team Check: OFF", UDim2.new(0.05, 0, 0, 75))
+local swapBtn = addBtn("Target: Head", UDim2.new(0.05, 0, 0, 115))
+local upBtn = addBtn("+ Size", UDim2.new(0.05, 0, 0, 155))
+local downBtn = addBtn("- Size", UDim2.new(0.52, 0, 0, 155)); downBtn.Size = UDim2.new(0.42, 0, 0, 35)
 
--- Logic
-local function updateESP(char)
-	if not char:FindFirstChild("Highlight") and espEnabled then
-		local hl = Instance.new("Highlight", char)
-		hl.FillTransparency = 0.5
-	elseif not espEnabled and char:FindFirstChild("Highlight") then
-		char.Highlight:Destroy()
-	end
-	
-	local head = char:FindFirstChild("Head")
-	if head then
-		local bill = head:FindFirstChild("ESP_UI")
-		if espEnabled and not bill then
-			bill = Instance.new("BillboardGui", head)
-			bill.Name = "ESP_UI"
-			bill.Size = UDim2.new(0, 100, 0, 50)
-			bill.StudsOffset = Vector3.new(0, 3, 0)
-			bill.AlwaysOnTop = true
-			local label = Instance.new("TextLabel", bill)
-			label.Size = UDim2.new(1, 0, 1, 0)
-			label.BackgroundTransparency = 1
-			label.TextColor3 = Color3.new(1, 1, 1)
-		end
-		if bill then
-			local hum = char:FindFirstChild("Humanoid")
-			local status = (hum and hum.Health > 0) and math.floor(hum.Health) .. " HP" or "DEAD"
-			bill.TextLabel.Text = char.Name .. "\n" .. status
-		elseif not espEnabled and bill then
-			bill:Destroy()
-		end
-	end
-end
+addTitle("ESP Configuration", UDim2.new(0,0,0,200))
+local espBtn = addBtn("ESP: OFF", UDim2.new(0.05, 0, 0, 235))
 
-local function modifyPart(char)
-	if char == LocalPlayer.Character then return end
-	if teamCheckEnabled and LocalPlayer.Team and char:FindFirstChild("Humanoid") then
-		local otherPlr = Players:GetPlayerFromCharacter(char)
-		if otherPlr and otherPlr.Team == LocalPlayer.Team then return end
-	end
+addTitle("Player Configuration", UDim2.new(0,0,0,280))
+local wsBtn = addBtn("WS: 16", UDim2.new(0.05, 0, 0, 315))
+local jpBtn = addBtn("JP: 50", UDim2.new(0.05, 0, 0, 355))
+local resetBtn = addBtn("Reset WS/JP", UDim2.new(0.05, 0, 0, 395))
 
-	local part = char:FindFirstChild(targetBodyPart)
-	if part and part:IsA("BasePart") then
-		if not originalSizes[char.Name .. targetBodyPart] then originalSizes[char.Name .. targetBodyPart] = part.Size end
-		if guiEnabled then
-			part.Size = Vector3.new(headSizeValue, headSizeValue, headSizeValue)
-			part.Massless = true
-			part.CanCollide = false
-		else
-			part.Size = originalSizes[char.Name .. targetBodyPart] or Vector3.new(2,1,1)
+-- Logic Functions
+local function restoreAllParts(char)
+	for _, part in pairs({char:FindFirstChild("Head"), char:FindFirstChild("UpperTorso"), char:FindFirstChild("Torso")}) do
+		if part and originalSizes[char.Name .. part.Name] then
+			part.Size = originalSizes[char.Name .. part.Name]
 			part.Massless = false
 		end
 	end
 end
 
--- Toggles
-toggleBtn.MouseButton1Click:Connect(function()
-	guiEnabled = not guiEnabled
-	toggleBtn.Text = guiEnabled and "Hitbox: ON" or "Hitbox: OFF"
-end)
-
-teamBtn.MouseButton1Click:Connect(function()
-	teamCheckEnabled = not teamCheckEnabled
-	teamBtn.Text = teamCheckEnabled and "Team Check: ON" or "Team Check: OFF"
-end)
-
-espBtn.MouseButton1Click:Connect(function()
-	espEnabled = not espEnabled
-	espBtn.Text = espEnabled and "ESP: ON" or "ESP: OFF"
-end)
-
-swapBtn.MouseButton1Click:Connect(function()
-	targetBodyPart = (targetBodyPart == "Head") and "UpperTorso" or "Head"
-	swapBtn.Text = "Target: " .. targetBodyPart
-end)
-
-upBtn.MouseButton1Click:Connect(function() headSizeValue += 5 end)
-downBtn.MouseButton1Click:Connect(function() headSizeValue = math.max(1, headSizeValue - 5) end)
-
--- Loop
-RunService.RenderStepped:Connect(function()
+-- Main Loop (Throttled for Performance)
+local lastUpdate = 0
+RunService.RenderStepped:Connect(function(dt)
+	lastUpdate += dt
+	if lastUpdate < 0.1 then return end -- Only runs 10 times per second
+	lastUpdate = 0
+	
 	for _, p in pairs(Players:GetPlayers()) do
-		if p ~= LocalPlayer and p.Character then
-			modifyPart(p.Character)
-			updateESP(p.Character)
+		if p == LocalPlayer or not p.Character then continue end
+		
+		-- Hitbox Logic
+		local part = p.Character:FindFirstChild(config.TargetPart)
+		if config.HitboxEnabled and part then
+			if not originalSizes[p.Character.Name .. part.Name] then originalSizes[p.Character.Name .. part.Name] = part.Size end
+			if not config.TeamCheck or (p.Team ~= LocalPlayer.Team) then
+				part.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+				part.Massless = true
+				part.CanCollide = false
+			end
+		else
+			restoreAllParts(p.Character)
 		end
+		
+		-- ESP Logic
+		-- [Insert ESP Update Code Here]
+	end
+	
+	-- Apply WalkSpeed/JumpPower (Bypass)
+	if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+		LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
+		LocalPlayer.Character.Humanoid.JumpPower = config.JP
 	end
 end)
+
+-- Button Connections
+hitBtn.MouseButton1Click:Connect(function() config.HitboxEnabled = not config.HitboxEnabled; hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") end)
+teamBtn.MouseButton1Click:Connect(function() config.TeamCheck = not config.TeamCheck; teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") end)
+swapBtn.MouseButton1Click:Connect(function() config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head"; swapBtn.Text = "Target: " .. config.TargetPart end)
+upBtn.MouseButton1Click:Connect(function() config.HitboxSize += 5 end)
+downBtn.MouseButton1Click:Connect(function() config.HitboxSize = math.max(1, config.HitboxSize - 5) end)
+wsBtn.MouseButton1Click:Connect(function() config.WS += 5; wsBtn.Text = "WS: " .. config.WS end)
+jpBtn.MouseButton1Click:Connect(function() config.JP += 5; jpBtn.Text = "JP: " .. config.JP end)
+resetBtn.MouseButton1Click:Connect(function() config.WS = 16; config.JP = 50; wsBtn.Text = "WS: 16"; jpBtn.Text = "JP: 50" end)
