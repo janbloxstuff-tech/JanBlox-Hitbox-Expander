@@ -9,9 +9,16 @@ local config = {
     ESPEnabled = false,
     TargetPart = "Head", 
     HitboxSize = 5, 
+    HitboxTransparency = 0.5, -- New feature
     WS = 16, 
     JP = 50,
-    ESPTransparency = 0.5
+    ESPTransparency = 0.5,
+    
+    -- NPC Configurations
+    NPCHitboxEnabled = false,
+    NPCTargetPart = "Head",
+    NPCHitboxSize = 5,
+    NPCHitboxTransparency = 0.5
 }
 local originalSizes = {}
 
@@ -21,9 +28,14 @@ screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local scrollFrame = Instance.new("ScrollingFrame", screenGui)
-scrollFrame.Size = UDim2.new(0, 260, 0, 420)
-scrollFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+-- Main Menu Frame (Acts as a draggable wrapper)
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 260, 0, 420)
+mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+mainFrame.BackgroundTransparency = 1 -- Transparent container for scrolling
+
+local scrollFrame = Instance.new("ScrollingFrame", mainFrame)
+scrollFrame.Size = UDim2.new(1, 0, 1, 0)
 scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 scrollFrame.BorderSizePixel = 0
 scrollFrame.ScrollBarThickness = 6
@@ -32,9 +44,57 @@ scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 scrollFrame.Visible = true
 
 local layout = Instance.new("UIListLayout", scrollFrame)
-layout.SortOrder = Enum.SortOrder.LayoutOrder -- Force strict layout sorting
+layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 6)
 layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+-- Toggle Button (Open/Close)
+local toggleBtn = Instance.new("TextButton", screenGui)
+toggleBtn.Name = "OpenCloseButton"
+toggleBtn.Size = UDim2.new(0, 100, 0, 40)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.03, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 14
+toggleBtn.Text = "Toggle Menu"
+toggleBtn.BorderSizePixel = 1
+
+-- Simple UI Dragger Function Utility
+local function makeDraggable(frame, handle)
+    handle = handle or frame
+    local dragging, dragInput, dragStart, startPos
+    
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    
+    handle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    
+    RunService.RenderStepped:Connect(function()
+        if dragging and dragInput then
+            local delta = dragInput.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+makeDraggable(mainFrame, scrollFrame)
+makeDraggable(toggleBtn)
 
 -- Order Tracker to force top-to-bottom alignment
 local layoutOrderCounter = 0
@@ -48,7 +108,7 @@ local function addTitle(text)
     t.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     t.Font = Enum.Font.SourceSansBold
     t.TextSize = 16
-    t.LayoutOrder = layoutOrderCounter -- Lock index position
+    t.LayoutOrder = layoutOrderCounter
     t.Parent = scrollFrame
     return t
 end
@@ -62,7 +122,7 @@ local function addBtn(text)
     btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
     btn.Font = Enum.Font.SourceSans
     btn.TextSize = 14
-    btn.LayoutOrder = layoutOrderCounter -- Lock index position
+    btn.LayoutOrder = layoutOrderCounter
     btn.Parent = scrollFrame
     return btn
 end
@@ -79,14 +139,22 @@ addTitle("Hitbox Configuration")
 local hitBtn = addBtn("Hitbox: OFF")
 local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
-local transBtn = addBtn("ESPTransparency: 0.5")
+local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
 
--- 3rd Section
+-- 3rd Section (NPC Hitbox Clone Section)
+addTitle("NPC Configuration")
+local npcHitBtn = addBtn("NPC Hitbox: OFF")
+local npcSwapBtn = addBtn("NPC Target: Head")
+local npcSizeBtn = addBtn("NPC Size: 5")
+local npcTransBtn = addBtn("NPC Transparency: 0.5")
+
+-- 4th Section
 addTitle("ESP Configuration")
 local teamBtn = addBtn("Team Check: OFF")
 local espBtn = addBtn("ESP: OFF")
+local transBtn = addBtn("ESPTransparency: 0.5")
 
--- 4th Section
+-- 5th Section
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
@@ -97,6 +165,7 @@ local function restorePart(char, partName)
     local part = char:FindFirstChild(partName)
     if part and originalSizes[char.Name .. partName] then
         part.Size = originalSizes[char.Name .. partName]
+        part.Transparency = originalSizes[char.Name .. partName .. "_Trans"] or 0
         part.Massless = false
     end
 end
@@ -144,31 +213,55 @@ local function updateESP(char)
     end
 end
 
+-- Process Dynamic Hitbox Adjustment for a Model
+local function handleHitboxProcessing(c, isNPC, playerObj)
+    local isEnabled = isNPC and config.NPCHitboxEnabled or config.HitboxEnabled
+    local targetPart = isNPC and config.NPCTargetPart or config.TargetPart
+    local hitboxSize = isNPC and config.NPCHitboxSize or config.HitboxSize
+    local hitboxTrans = isNPC and config.NPCHitboxTransparency or config.HitboxTransparency
+    
+    local target = c:FindFirstChild(targetPart)
+    local other = (targetPart == "Head") and "UpperTorso" or "Head"
+    
+    local passesTeamCheck = true
+    if not isNPC and playerObj and config.TeamCheck and playerObj.Team == LocalPlayer.Team then
+        passesTeamCheck = false
+    end
+    
+    if isEnabled and passesTeamCheck and target then
+        if not originalSizes[c.Name .. targetPart] then 
+            originalSizes[c.Name .. targetPart] = target.Size 
+            originalSizes[c.Name .. targetPart .. "_Trans"] = target.Transparency
+        end
+        restorePart(c, other)
+        
+        target.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+        target.Transparency = hitboxTrans
+        target.Massless = true
+        target.CanCollide = false
+    else
+        restorePart(c, "Head")
+        restorePart(c, "UpperTorso")
+    end
+end
+
 -- Main Runtime Engine Loop
 RunService.RenderStepped:Connect(function()
+    -- Track Players
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer or not p.Character then continue end
-        local c = p.Character
-        updateESP(c)
-
-        local target = c:FindFirstChild(config.TargetPart)
-        local other = (config.TargetPart == "Head") and "UpperTorso" or "Head"
-        
-        if config.HitboxEnabled and (not config.TeamCheck or p.Team ~= LocalPlayer.Team) and target then
-            if not originalSizes[c.Name .. config.TargetPart] then 
-                originalSizes[c.Name .. config.TargetPart] = target.Size 
-            end
-            restorePart(c, other) -- Re-normalize non-targeted fields
-            
-            target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-            target.Massless = true
-            target.CanCollide = false
-        else
-            restorePart(c, "Head")
-            restorePart(c, "UpperTorso")
+        updateESP(p.Character)
+        handleHitboxProcessing(p.Character, false, p)
+    end
+    
+    -- Track NPCs (Models inside Workspace that aren't players)
+    for _, obj in pairs(workspace:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
+            handleHitboxProcessing(obj, true, nil)
         end
     end
     
+    -- Local Player Modifications
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
         LocalPlayer.Character.Humanoid.JumpPower = config.JP
@@ -178,6 +271,11 @@ end)
 -- ==========================================
 -- Button Bindings & Control Actions
 -- ==========================================
+
+-- Open / Close Action
+toggleBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end)
 
 -- Hitbox Configuration Actions
 hitBtn.MouseButton1Click:Connect(function() 
@@ -191,21 +289,34 @@ swapBtn.MouseButton1Click:Connect(function()
 end)
 
 sizeBtn.MouseButton1Click:Connect(function()
-    if config.HitboxSize >= 25 then
-        config.HitboxSize = 5
-    else
-        config.HitboxSize = config.HitboxSize + 5
-    end
+    config.HitboxSize = (config.HitboxSize >= 25) and 5 or (config.HitboxSize + 5)
     sizeBtn.Text = "Size: " .. config.HitboxSize
 end)
 
-transBtn.MouseButton1Click:Connect(function()
-    if config.ESPTransparency >= 0.9 then
-        config.ESPTransparency = 0.1
-    else
-        config.ESPTransparency = tonumber(string.format("%.1f", config.ESPTransparency + 0.2))
-    end
-    transBtn.Text = "ESPTransparency: " .. tostring(config.ESPTransparency)
+hitTransBtn.MouseButton1Click:Connect(function()
+    config.HitboxTransparency = (config.HitboxTransparency >= 0.9) and 0 or tonumber(string.format("%.1f", config.HitboxTransparency + 0.2))
+    hitTransBtn.Text = "Hitbox Transparency: " .. tostring(config.HitboxTransparency)
+end)
+
+-- NPC Configuration Actions
+npcHitBtn.MouseButton1Click:Connect(function()
+    config.NPCHitboxEnabled = not config.NPCHitboxEnabled
+    npcHitBtn.Text = "NPC Hitbox: " .. (config.NPCHitboxEnabled and "ON" or "OFF")
+end)
+
+npcSwapBtn.MouseButton1Click:Connect(function()
+    config.NPCTargetPart = (config.NPCTargetPart == "Head") and "UpperTorso" or "Head"
+    npcSwapBtn.Text = "NPC Target: " .. config.NPCTargetPart
+end)
+
+npcSizeBtn.MouseButton1Click:Connect(function()
+    config.NPCHitboxSize = (config.NPCHitboxSize >= 25) and 5 or (config.NPCHitboxSize + 5)
+    npcSizeBtn.Text = "NPC Size: " .. config.NPCHitboxSize
+end)
+
+npcTransBtn.MouseButton1Click:Connect(function()
+    config.NPCHitboxTransparency = (config.NPCHitboxTransparency >= 0.9) and 0 or tonumber(string.format("%.1f", config.NPCHitboxTransparency + 0.2))
+    npcTransBtn.Text = "NPC Transparency: " .. tostring(config.NPCHitboxTransparency)
 end)
 
 -- ESP Configuration Actions
@@ -217,6 +328,11 @@ end)
 espBtn.MouseButton1Click:Connect(function() 
     config.ESPEnabled = not config.ESPEnabled 
     espBtn.Text = "ESP: " .. (config.ESPEnabled and "ON" or "OFF") 
+end)
+
+transBtn.MouseButton1Click:Connect(function()
+    config.ESPTransparency = (config.ESPTransparency >= 0.9) and 0.1 or tonumber(string.format("%.1f", config.ESPTransparency + 0.2))
+    transBtn.Text = "ESPTransparency: " .. tostring(config.ESPTransparency)
 end)
 
 -- Player Configuration Actions
@@ -234,10 +350,20 @@ resetBtn.MouseButton1Click:Connect(function()
     config.WS = 16 
     config.JP = 50 
     config.HitboxSize = 5
+    config.HitboxTransparency = 0.5
     config.ESPTransparency = 0.5
+    config.NPCHitboxEnabled = false
+    config.NPCTargetPart = "Head"
+    config.NPCHitboxSize = 5
+    config.NPCHitboxTransparency = 0.5
     
     wsBtn.Text = "WS: 16"
     jpBtn.Text = "JP: 50"
     sizeBtn.Text = "Size: 5"
+    hitTransBtn.Text = "Hitbox Transparency: 0.5"
     transBtn.Text = "ESPTransparency: 0.5"
+    npcHitBtn.Text = "NPC Hitbox: OFF"
+    npcSwapBtn.Text = "NPC Target: Head"
+    npcSizeBtn.Text = "NPC Size: 5"
+    npcTransBtn.Text = "NPC Transparency: 0.5"
 end)
