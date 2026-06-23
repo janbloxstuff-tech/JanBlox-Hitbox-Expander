@@ -7,7 +7,7 @@ local TeleportService = game:GetService("TeleportService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
 if not PlayerGui then
-	warn("❌ PlayerGui failed to load - script stopping")
+	warn("PlayerGui failed to load - script stopping")
 	return
 end
 
@@ -28,12 +28,18 @@ local config = {
 	NPCTargetPart = "Head",
 	NPCHitboxSize = 5,
 	NPCHitboxTransparency = 0.5,
-	
+
 	AutoJump = false,
 	GlobalHitboxToggle = true
 }
 
+local originalPlayerSizes = setmetatable({}, { __mode = "k" })
+local originalNPCSizes = setmetatable({}, { __mode = "k" })
 local cachedNPCs = {}
+
+local candidateParts = {
+	"Head"
+}
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "JanBloxGui"
@@ -185,13 +191,13 @@ end
 
 local function addStatControl(labelPrefix, defaultValue)
 	layoutOrderCounter = layoutOrderCounter + 1
-	
+
 	local container = Instance.new("Frame")
 	container.Size = UDim2.new(0.92, 0, 0, 35)
 	container.BackgroundTransparency = 1
 	container.LayoutOrder = layoutOrderCounter
 	container.Parent = scrollFrame
-	
+
 	local label = Instance.new("TextLabel", container)
 	label.Size = UDim2.new(0.5, 0, 1, 0)
 	label.Text = labelPrefix .. ": " .. defaultValue
@@ -199,10 +205,10 @@ local function addStatControl(labelPrefix, defaultValue)
 	label.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
 	label.Font = Enum.Font.SourceSans
 	label.TextSize = 13
-	
+
 	local lc = Instance.new("UICorner", label)
 	lc.CornerRadius = UDim.new(0, 5)
-	
+
 	local minusBtn = Instance.new("TextButton", container)
 	minusBtn.Size = UDim2.new(0.22, 0, 1, 0)
 	minusBtn.Position = UDim2.new(0.53, 0, 0, 0)
@@ -211,10 +217,10 @@ local function addStatControl(labelPrefix, defaultValue)
 	minusBtn.BackgroundColor3 = Color3.fromRGB(85, 45, 45)
 	minusBtn.Font = Enum.Font.SourceSansBold
 	minusBtn.TextSize = 16
-	
+
 	local mc = Instance.new("UICorner", minusBtn)
 	mc.CornerRadius = UDim.new(0, 5)
-	
+
 	local plusBtn = Instance.new("TextButton", container)
 	plusBtn.Size = UDim2.new(0.22, 0, 1, 0)
 	plusBtn.Position = UDim2.new(0.78, 0, 0, 0)
@@ -223,10 +229,10 @@ local function addStatControl(labelPrefix, defaultValue)
 	plusBtn.BackgroundColor3 = Color3.fromRGB(45, 85, 45)
 	plusBtn.Font = Enum.Font.SourceSansBold
 	plusBtn.TextSize = 16
-	
+
 	local pc = Instance.new("UICorner", plusBtn)
 	pc.CornerRadius = UDim.new(0, 5)
-	
+
 	return label, minusBtn, plusBtn
 end
 
@@ -235,13 +241,11 @@ local rejoinBtn = addBtn("Rejoin Server")
 addTitle("Hitbox Configuration")
 local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
 local hitBtn = addBtn("Hitbox: OFF")
-local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
 local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
 
 addTitle("NPC Configuration")
 local npcHitBtn = addBtn("NPC Hitbox: OFF")
-local npcSwapBtn = addBtn("NPC Target: Head")
 local npcSizeBtn = addBtn("NPC Size: 5")
 local npcTransBtn = addBtn("NPC Transparency: 0.5")
 
@@ -256,6 +260,53 @@ local jpLabel, jpMinus, jpPlus = addStatControl("JP", 50)
 local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
+
+local function savePartState(char, part, storage)
+	if not storage[char] then
+		storage[char] = {}
+	end
+
+	if not storage[char][part.Name] then
+		storage[char][part.Name] = {
+			Size = part.Size,
+			Transparency = part.Transparency,
+			CanCollide = part.CanCollide,
+			CanTouch = part.CanTouch,
+			CanQuery = part.CanQuery,
+			Massless = part.Massless
+		}
+	end
+end
+
+local function restorePart(char, partName, storage)
+	local charStorage = storage[char]
+	if not charStorage then
+		return
+	end
+
+	local data = charStorage[partName]
+	if not data then
+		return
+	end
+
+	local part = char:FindFirstChild(partName)
+	if not part then
+		return
+	end
+
+	part.Size = data.Size
+	part.Transparency = data.Transparency
+	part.CanCollide = data.CanCollide
+	part.CanTouch = data.CanTouch
+	part.CanQuery = data.CanQuery
+	part.Massless = data.Massless
+end
+
+local function restoreAllCandidateParts(char, storage)
+	for _, partName in ipairs(candidateParts) do
+		restorePart(char, partName, storage)
+	end
+end
 
 local function isAliveCharacter(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -278,8 +329,14 @@ local function destroyESP(char)
 end
 
 local function updateESP(char, playerObj)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+
 	if not isAliveCharacter(char) then
 		destroyESP(char)
+		-- Restore default name view if the character is dead/invalid
+		if hum then
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		end
 		return
 	end
 
@@ -287,7 +344,14 @@ local function updateESP(char, playerObj)
 
 	if not showESP then
 		destroyESP(char)
+		if hum then
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		end
 		return
+	end
+
+	if hum then
+		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	end
 
 	local head = char:FindFirstChild("Head")
@@ -331,7 +395,6 @@ local function updateESP(char, playerObj)
 		lbl.Parent = bill
 	end
 
-	local hum = char:FindFirstChildOfClass("Humanoid")
 	local status = (hum and hum.Health > 0) and (math.floor(hum.Health) .. " HP") or "DEAD"
 	local label = bill:FindFirstChild("InfoLabel")
 	if label then
@@ -339,54 +402,30 @@ local function updateESP(char, playerObj)
 	end
 end
 
--- GetPartBoundsInBox visual component builder
-local function updateVisualBox(char, targetPartName, size, transparency)
-	local targetPart = char:FindFirstChild(targetPartName)
-	if not targetPart then
-		-- Fallback to HumanoidRootPart if the specified part can't be fetched
-		targetPart = char:FindFirstChild("HumanoidRootPart")
-	end
-	if not targetPart then return end
-
-	local box = char:FindFirstChild("JanBoxHitbox")
-	if not box then
-		box = Instance.new("Part")
-		box.Name = "Hitbox"
-		box.CastShadow = false
-		box.CanCollide = false
-		box.CanTouch = true
-		box.CanQuery = false
-		box.Material = Enum.Material.ForceField
-		box.Parent = char
-	end
-
-	box.Size = Vector3.new(size, size, size)
-	box.Transparency = transparency
-	box.CFrame = targetPart.CFrame
-end
-
-local function removeVisualBox(char)
-	local box = char:FindFirstChild("JanBoxHitbox")
-	if box then
-		box:Destroy()
-	end
-end
-
 local function handlePlayerHitbox(char, playerObj)
 	local alive = isAliveCharacter(char)
 
 	if not alive then
-		removeVisualBox(char)
+		restoreAllCandidateParts(char, originalPlayerSizes)
 		destroyESP(char)
 		return
 	end
 
+	local targetPart = char:FindFirstChild("Head")
+
 	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
 		pcall(function()
-			updateVisualBox(char, config.TargetPart, config.HitboxSize, config.HitboxTransparency)
+			if targetPart then
+				savePartState(char, targetPart, originalPlayerSizes)
+				targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+				targetPart.Transparency = config.HitboxTransparency
+				targetPart.CanCollide = false
+				targetPart.Massless = true
+				targetPart.CanTouch = true
+			end
 		end)
 	else
-		removeVisualBox(char)
+		restoreAllCandidateParts(char, originalPlayerSizes)
 	end
 end
 
@@ -397,16 +436,25 @@ local function handleNPCHitbox(char)
 
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
-		removeVisualBox(char)
+		restoreAllCandidateParts(char, originalNPCSizes)
 		return
 	end
 
+	local targetPart = char:FindFirstChild("Head")
+
 	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
 		pcall(function()
-			updateVisualBox(char, config.NPCTargetPart, config.NPCHitboxSize, config.NPCHitboxTransparency)
+			if targetPart then
+				savePartState(char, targetPart, originalNPCSizes)
+				targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+				targetPart.Transparency = config.NPCHitboxTransparency
+				targetPart.CanCollide = false
+				targetPart.Massless = true
+				targetPart.CanTouch = true
+			end
 		end)
 	else
-		removeVisualBox(char)
+		restoreAllCandidateParts(char, originalNPCSizes)
 	end
 end
 
@@ -469,7 +517,6 @@ task.spawn(function()
 	end
 end)
 
--- Runs every step frame to instantly match requirements and secure continuous hitbox mapping
 RunService.RenderStepped:Connect(function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer and p.Character then
@@ -559,25 +606,9 @@ end
 
 toggleBtn.MouseButton1Click:Connect(toggleMenuVisuals)
 
-local function swapTargetParts()
-	config.TargetPart = (config.TargetPart == "Head") and "HumanoidRootPart" or "Head"
-	swapBtn.Text = "Target: " .. config.TargetPart
-	refreshAllPlayers()
-end
-
-local function swapNPCTargetParts()
-	config.NPCTargetPart = (config.NPCTargetPart == "Head") and "HumanoidRootPart" or "Head"
-	npcSwapBtn.Text = "NPC Target: " .. config.NPCTargetPart
-	refreshAllNPCs()
-end
-
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.K then
+	if not gameProcessed and input.KeyCode == Enum.KeyCode.K then
 		toggleMenuVisuals()
-	elseif input.KeyCode == Enum.KeyCode.I then
-		swapTargetParts()
-		swapNPCTargetParts()
 	end
 end)
 
@@ -586,8 +617,6 @@ hitBtn.MouseButton1Click:Connect(function()
 	hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF")
 	refreshAllPlayers()
 end)
-
-swapBtn.MouseButton1Click:Connect(swapTargetParts)
 
 sizeBtn.MouseButton1Click:Connect(function()
 	config.HitboxSize = (config.HitboxSize >= 70) and 5 or (config.HitboxSize + 5)
@@ -606,8 +635,6 @@ npcHitBtn.MouseButton1Click:Connect(function()
 	npcHitBtn.Text = "NPC Hitbox: " .. (config.NPCHitboxEnabled and "ON" or "OFF")
 	refreshAllNPCs()
 end)
-
-npcSwapBtn.MouseButton1Click:Connect(swapNPCTargetParts)
 
 npcSizeBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxSize = (config.NPCHitboxSize >= 70) and 5 or (config.NPCHitboxSize + 5)
@@ -674,7 +701,7 @@ end)
 bypassBtn.MouseButton1Click:Connect(function()
 	config.BypassWalkspeedJump = not config.BypassWalkspeedJump
 	bypassBtn.Text = "Toggle Bypass WS/JP: " .. (config.BypassWalkspeedJump and "ON" or "OFF")
-	
+
 	if not config.BypassWalkspeedJump then
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -705,7 +732,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	hitTransBtn.Text = "Hitbox Transparency: 0.5"
 	transBtn.Text = "ESPTransparency: 0.5"
 	npcHitBtn.Text = "NPC Hitbox: OFF"
-	npcSwapBtn.Text = "NPC Target: Head"
 	npcSizeBtn.Text = "NPC Size: 5"
 	npcTransBtn.Text = "NPC Transparency: 0.5"
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
