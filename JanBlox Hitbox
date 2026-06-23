@@ -519,10 +519,31 @@ local flyRenderConn
 local hasDoubleJumped = false
 local flyBodyGyro, flyBodyVelocity
 
+-- Modern Mobile Flight GUI Module Components
+local mobileFlyGui = Instance.new("ScreenGui")
+mobileFlyGui.Name = "MobileFlyGui"
+mobileFlyGui.ResetOnSpawn = false
+mobileFlyGui.DisplayOrder = 1000000
+
+local mobileFlyBtn = Instance.new("TextButton", mobileFlyGui)
+mobileFlyBtn.Size = UDim2.new(0, 70, 0, 70)
+mobileFlyBtn.Position = UDim2.new(0.8, 0, 0.45, 0) -- Conveniently placed above the native jump button
+mobileFlyBtn.BackgroundColor3 = Color3.fromRGB(240, 50, 50)
+mobileFlyBtn.TextColor3 = Color3.new(1, 1, 1)
+mobileFlyBtn.Font = Enum.Font.SourceSansBold
+mobileFlyBtn.TextSize = 16
+mobileFlyBtn.Text = "STOP\nFLY"
+mobileFlyBtn.Visible = false
+mobileFlyGui.Parent = PlayerGui
+
+local mobileCorner = Instance.new("UICorner", mobileFlyBtn)
+mobileCorner.CornerRadius = UDim.new(0, 35) -- Make it perfectly round
+
 local function stopFlying(char)
 	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
 	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
 	if flyRenderConn then flyRenderConn:Disconnect(); flyRenderConn = nil end
+	mobileFlyBtn.Visible = false
 	
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
@@ -539,6 +560,11 @@ local function startFlying(char)
 	stopFlying(char)
 	task.wait(0.05)
 	hum.PlatformStand = true
+	
+	-- Display Mobile Fly Control Interface overlay if they are on a touch device
+	if UserInputService.TouchEnabled then
+		mobileFlyBtn.Visible = true
+	end
 	
 	flyBodyGyro = Instance.new("BodyGyro")
 	flyBodyGyro.P = 9e4
@@ -570,22 +596,18 @@ local function startFlying(char)
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
 		
-		-- 2. Mobile Joystick & Screen Tap/Hold Navigation
-		-- Pushing the thumbstick OR tapping/holding down on the screen moves you where the camera looks
-		if hum.MoveDirection.Magnitude > 0 or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch) then
+		-- 2. Mobile Joystick & Screen Tap Flight Control Engine
+		if hum.MoveDirection.Magnitude > 0 or (UserInputService.TouchEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)) then
 			local camLook = camera.CFrame.LookVector
 			local camRight = camera.CFrame.RightVector
 			
 			if hum.MoveDirection.Magnitude > 0 then
-				-- Joystick movement calculation
 				direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
 			else
-				-- Pure Screen Tap calculation (Go straight forward towards focus point)
-				direction += camLook
+				direction += camLook -- Tap anywhere to fly straight forward where screen points
 			end
 		end
 		
-		-- Apply movement velocity constraints safely
 		if config.FlyEnabled and direction.Magnitude > 0 then
 			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
 		else
@@ -612,20 +634,20 @@ local function toggleFlightState()
 	end
 end
 
--- Universal Jump Mechanic Controller
+-- Connect the Mobile GUI Button to disable flight instantly upon press
+mobileFlyBtn.MouseButton1Click:Connect(function()
+	if config.FlyEnabled then
+		toggleFlightState()
+	end
+end)
+
+-- Universal Jump Force Processor (Restored & Highly Responsive)
 local function handleJumpInput()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root then return end
+	if not hum or not root or config.FlyEnabled then return end
 	
-	-- IF FLYING: Pressing the jump action button instantly STOPS flying and drops the character
-	if config.FlyEnabled then
-		toggleFlightState()
-		return
-	end
-	
-	-- IF NOT FLYING: Standard modern physics forces for Double Jump / Infinite Jump
 	if config.InfJumpEnabled then
 		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
 	elseif config.DoubleJumpEnabled then
@@ -637,9 +659,9 @@ local function handleJumpInput()
 	end
 end
 
--- Primary Activation Hook (Catches Spacebar & Mobile Native Virtual Jump Buttons)
+-- Fixed Touch Interface Processor: Intercepts spacebars, mobile UI button touches, and gamepads instantly
 UserInputService.InputBegan:Connect(function(input, processed)
-	-- KeyCode.Space processes PC, ButtonJump / Touch processes the Mobile UI interface buttons
+	-- Capture PC Spacebar or Native Mobile Jump Button inputs directly
 	if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA or input.UserInputType == Enum.UserInputType.Gamepad1 then
 		handleJumpInput()
 	elseif input.KeyCode == Enum.KeyCode.E then
@@ -647,23 +669,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- Mobile Native Button Event listener hook
-local function hookHumanoidJumping(hum)
-	hum.Jumping:Connect(function()
-		handleJumpInput()
-	end)
-end
-
-LocalPlayer.CharacterAdded:Connect(function(char)
-	local hum = char:WaitForChild("Humanoid")
-	hookHumanoidJumping(hum)
-end)
-
-if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-	hookHumanoidJumping(LocalPlayer.Character:FindFirstChildOfClass("Humanoid"))
-end
-
--- Fall-State tracking framework to reset Double Jump state safely on landing
+-- Safe Mobile Fall/Landing State monitor framework
 RunService.Heartbeat:Connect(function()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
