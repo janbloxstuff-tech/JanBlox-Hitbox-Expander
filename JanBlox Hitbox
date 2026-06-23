@@ -517,29 +517,16 @@ end)
 
 local flyRenderConn
 local hasDoubleJumped = false
-local flyBodyGyro
-local flyBodyVelocity
+local flyBodyGyro, flyBodyVelocity
 
 local function stopFlying(char)
-	if flyBodyGyro then
-		flyBodyGyro:Destroy()
-		flyBodyGyro = nil
-	end
-
-	if flyBodyVelocity then
-		flyBodyVelocity:Destroy()
-		flyBodyVelocity = nil
-	end
-
-	if flyRenderConn then
-		flyRenderConn:Disconnect()
-		flyRenderConn = nil
-	end
-
+	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
+	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
+	if flyRenderConn then flyRenderConn:Disconnect(); flyRenderConn = nil end
+	
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
 		hum.PlatformStand = false
-		hum.AutoRotate = true
 		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
 	end
 end
@@ -547,274 +534,136 @@ end
 local function startFlying(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root then
-		return
-	end
-
+	if not hum or not root then return end
+	
 	stopFlying(char)
 	task.wait(0.05)
-
 	hum.PlatformStand = true
-	hum.AutoRotate = false
-
+	
 	flyBodyGyro = Instance.new("BodyGyro")
 	flyBodyGyro.P = 9e4
-	flyBodyGyro.MaxTorque = Vector3.new(9e5, 9e5, 9e5)
-	flyBodyGyro.CFrame = root.CFrame
+	flyBodyGyro.maxTorque = Vector3.new(9e5, 9e5, 9e5)
+	flyBodyGyro.cframe = root.CFrame
 	flyBodyGyro.Parent = root
-
+	
 	flyBodyVelocity = Instance.new("BodyVelocity")
-	flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
-	flyBodyVelocity.MaxForce = Vector3.new(9e5, 9e5, 9e5)
+	flyBodyVelocity.velocity = Vector3.new(0, 0, 0)
+	flyBodyVelocity.maxForce = Vector3.new(9e5, 9e5, 9e5)
 	flyBodyVelocity.Parent = root
-
+	
 	local camera = workspace.CurrentCamera
-
+	
 	flyRenderConn = RunService.RenderStepped:Connect(function()
 		if not char.Parent or not hum or hum.Health <= 0 or not config.FlyEnabled then
 			stopFlying(char)
 			return
 		end
-
-		if not workspace.CurrentCamera then
-			return
-		end
-
-		flyBodyGyro.CFrame = workspace.CurrentCamera.CFrame
-
+		
+		flyBodyGyro.cframe = camera.CFrame
 		local direction = Vector3.new(0, 0, 0)
-		local cam = workspace.CurrentCamera
-
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-			direction += cam.CFrame.LookVector
+		
+		-- 1. PC Directional Keys
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction -= camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction += camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
+		
+		-- 2. Mobile Joystick & Screen Tap/Hold Navigation
+		-- Pushing the thumbstick OR tapping/holding down on the screen moves you where the camera looks
+		if hum.MoveDirection.Magnitude > 0 or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch) then
+			local camLook = camera.CFrame.LookVector
+			local camRight = camera.CFrame.RightVector
+			
+			if hum.MoveDirection.Magnitude > 0 then
+				-- Joystick movement calculation
+				direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
+			else
+				-- Pure Screen Tap calculation (Go straight forward towards focus point)
+				direction += camLook
+			end
 		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-			direction -= cam.CFrame.LookVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-			direction -= cam.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-			direction += cam.CFrame.RightVector
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-			direction += Vector3.new(0, 1, 0)
-		end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-			direction -= Vector3.new(0, 1, 0)
-		end
-
-		if UserInputService.TouchEnabled and hum.MoveDirection.Magnitude > 0 then
-			direction += hum.MoveDirection
-		end
-
-		if direction.Magnitude > 0 then
-			flyBodyVelocity.Velocity = direction.Unit * config.FlySpeed
+		
+		-- Apply movement velocity constraints safely
+		if config.FlyEnabled and direction.Magnitude > 0 then
+			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
 		else
-			flyBodyVelocity.Velocity = Vector3.new(0, 0, 0)
+			flyBodyVelocity.velocity = Vector3.new(0, 0.05, 0)
 		end
 	end)
 end
 
 local function updateFlyButtonText()
-	if flyBtn then
-		flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
-	end
+	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
 end
 
 local function toggleFlightState()
 	config.FlyEnabled = not config.FlyEnabled
 	updateFlyButtonText()
-
-	local char = LocalPlayer.Character
 	if config.FlyEnabled then
-		startFlying(char)
+		config.DoubleJumpEnabled = false
+		doubleJumpBtn.Text = "Double Jump: OFF"
+		config.InfJumpEnabled = false
+		infJumpBtn.Text = "Infinite Jump: OFF"
+		startFlying(LocalPlayer.Character)
 	else
-		stopFlying(char)
+		stopFlying(LocalPlayer.Character)
 	end
 end
 
+-- Universal Jump Mechanic Controller
 local function handleJumpInput()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root or config.FlyEnabled then
+	if not hum or not root then return end
+	
+	-- IF FLYING: Pressing the jump action button instantly STOPS flying and drops the character
+	if config.FlyEnabled then
+		toggleFlightState()
 		return
 	end
-
+	
+	-- IF NOT FLYING: Standard modern physics forces for Double Jump / Infinite Jump
 	if config.InfJumpEnabled then
-		root.AssemblyLinearVelocity = Vector3.new(
-			root.AssemblyLinearVelocity.X,
-			config.JP,
-			root.AssemblyLinearVelocity.Z
-		)
-		return
-	end
-
-	if config.DoubleJumpEnabled then
+		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
+	elseif config.DoubleJumpEnabled then
 		local state = hum:GetState()
 		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped then
 			hasDoubleJumped = true
-			root.AssemblyLinearVelocity = Vector3.new(
-				root.AssemblyLinearVelocity.X,
-				config.JP,
-				root.AssemblyLinearVelocity.Z
-			)
+			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
 		end
 	end
 end
 
-local function createFlyGui()
-	if not UserInputService.TouchEnabled then
-		return
-	end
-
-	local existing = PlayerGui:FindFirstChild("FlyGui")
-	if existing then
-		existing:Destroy()
-	end
-
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "FlyGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = true
-	screenGui.Parent = PlayerGui
-
-	local frame = Instance.new("Frame")
-	frame.Name = "FlyFrame"
-	frame.Size = UDim2.new(0, 145, 0, 62)
-	frame.Position = UDim2.new(0.75, 0, 0.68, 0)
-	frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-	frame.BorderSizePixel = 0
-	frame.Parent = screenGui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = frame
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 1
-	stroke.Color = Color3.fromRGB(70, 70, 70)
-	stroke.Parent = frame
-
-	local dragBar = Instance.new("TextButton")
-	dragBar.Name = "DragBar"
-	dragBar.Size = UDim2.new(1, 0, 0, 18)
-	dragBar.BackgroundTransparency = 1
-	dragBar.Text = "Drag"
-	dragBar.TextSize = 11
-	dragBar.Font = Enum.Font.Gotham
-	dragBar.TextColor3 = Color3.fromRGB(180, 180, 180)
-	dragBar.Parent = frame
-
-	flyBtn = Instance.new("TextButton")
-	flyBtn.Name = "FlyButton"
-	flyBtn.Size = UDim2.new(1, -8, 0, 34)
-	flyBtn.Position = UDim2.new(0, 4, 0, 22)
-	flyBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-	flyBtn.BorderSizePixel = 0
-	flyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	flyBtn.TextSize = 16
-	flyBtn.Font = Enum.Font.GothamBold
-	flyBtn.AutoButtonColor = true
-	flyBtn.Parent = frame
-
-	local buttonCorner = Instance.new("UICorner")
-	buttonCorner.CornerRadius = UDim.new(0, 6)
-	buttonCorner.Parent = flyBtn
-
-	updateFlyButtonText()
-
-	flyBtn.MouseButton1Click:Connect(toggleFlightState)
-
-	local dragging = false
-	local dragInput
-	local dragStart
-	local startPos
-
-	local function update(input)
-		local delta = input.Position - dragStart
-		frame.Position = UDim2.new(
-			startPos.X.Scale,
-			startPos.X.Offset + delta.X,
-			startPos.Y.Scale,
-			startPos.Y.Offset + delta.Y
-		)
-	end
-
-	dragBar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = frame.Position
-
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-				end
-			end)
-		end
-	end)
-
-	dragBar.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input)
-		if dragging and input == dragInput then
-			update(input)
-		end
-	end)
-end
-
-UserInputService.JumpRequest:Connect(function()
-	handleJumpInput()
-end)
-
+-- Primary Activation Hook (Catches Spacebar & Mobile Native Virtual Jump Buttons)
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.E then
-		toggleFlightState()
-	elseif input.KeyCode == Enum.KeyCode.Space then
+	-- KeyCode.Space processes PC, ButtonJump / Touch processes the Mobile UI interface buttons
+	if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA or input.UserInputType == Enum.UserInputType.Gamepad1 then
 		handleJumpInput()
+	elseif input.KeyCode == Enum.KeyCode.E then
+		toggleFlightState()
 	end
 end)
+
+-- Mobile Native Button Event listener hook
+local function hookHumanoidJumping(hum)
+	hum.Jumping:Connect(function()
+		handleJumpInput()
+	end)
+end
 
 LocalPlayer.CharacterAdded:Connect(function(char)
-	hasDoubleJumped = false
-
 	local hum = char:WaitForChild("Humanoid")
-	hum.StateChanged:Connect(function(_, newState)
-		if newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
-			hasDoubleJumped = false
-		end
-	end)
-
-	if config.FlyEnabled then
-		task.wait(0.1)
-		startFlying(char)
-	end
+	hookHumanoidJumping(hum)
 end)
 
-if LocalPlayer.Character then
-	local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.StateChanged:Connect(function(_, newState)
-			if newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Running then
-				hasDoubleJumped = false
-			end
-		end)
-	end
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+	hookHumanoidJumping(LocalPlayer.Character:FindFirstChildOfClass("Humanoid"))
 end
 
-createFlyGui()
-updateFlyButtonText()
-
+-- Fall-State tracking framework to reset Double Jump state safely on landing
 RunService.Heartbeat:Connect(function()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
