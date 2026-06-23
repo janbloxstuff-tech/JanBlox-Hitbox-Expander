@@ -411,16 +411,16 @@ local function handlePlayerHitbox(char, playerObj)
 				savePartState(char, hrp, originalPlayerSizes)
 				hrp.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
 				hrp.CanCollide = false
-				hrp.CanTouch = false -- Prevents massive morph structures from locking world physics vectors
-				hrp.Massless = true
+				hrp.Massless = false
+				hrp.CanTouch = true
 			end
 			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
 				savePartState(char, targetPart, originalPlayerSizes)
 				targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
 				targetPart.Transparency = config.HitboxTransparency
 				targetPart.CanCollide = false
-				targetPart.CanTouch = false
-				targetPart.Massless = true
+				targetPart.Massless = false
+				hrp.CanTouch = true
 			end
 		end)
 	else
@@ -448,16 +448,16 @@ local function handleNPCHitbox(char)
 				savePartState(char, hrp, originalNPCSizes)
 				hrp.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
 				hrp.CanCollide = false
-				hrp.CanTouch = false -- Completely prevents large custom morph packages from freezing physics
-				hrp.Massless = true
+				hrp.Massless = false
+				hrp.CanTouch = true
 			end
 			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
 				savePartState(char, targetPart, originalNPCSizes)
 				targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
 				targetPart.Transparency = config.NPCHitboxTransparency
 				targetPart.CanCollide = false
-				targetPart.CanTouch = false
-				targetPart.Massless = true
+				targetPart.Massless = false
+				hrp.CanTouch = true
 			end
 		end)
 	else
