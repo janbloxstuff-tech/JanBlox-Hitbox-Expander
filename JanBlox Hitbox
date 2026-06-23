@@ -492,6 +492,8 @@ task.spawn(function()
 				table.remove(cachedNPCs, i)
 			end
 		end
+    end
+end
 
 local char = LocalPlayer.Character
 local hum = char and char:FindFirstChildOfClass("Humanoid")
