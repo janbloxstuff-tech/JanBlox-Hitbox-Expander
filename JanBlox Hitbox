@@ -50,7 +50,7 @@ screenGui.DisplayOrder = 999999
 screenGui.Parent = PlayerGui
 
 local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 260, 0, 420)
+mainFrame.Size = UDim2.new(0, 260, 0, 450)
 mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
@@ -191,6 +191,53 @@ local function addBtn(text)
 	return btn
 end
 
+local function addStatControl(labelPrefix, defaultValue)
+	layoutOrderCounter = layoutOrderCounter + 1
+	
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(0.92, 0, 0, 35)
+	container.BackgroundTransparency = 1
+	container.LayoutOrder = layoutOrderCounter
+	container.Parent = scrollFrame
+	
+	local label = Instance.new("TextLabel", container)
+	label.Size = UDim2.new(0.5, 0, 1, 0)
+	label.Text = labelPrefix .. ": " .. defaultValue
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
+	label.Font = Enum.Font.SourceSans
+	label.TextSize = 13
+	
+	local lc = Instance.new("UICorner", label)
+	lc.CornerRadius = UDim.new(0, 5)
+	
+	local minusBtn = Instance.new("TextButton", container)
+	minusBtn.Size = UDim2.new(0.22, 0, 1, 0)
+	minusBtn.Position = UDim2.new(0.53, 0, 0, 0)
+	minusBtn.Text = "-"
+	minusBtn.TextColor3 = Color3.new(1, 1, 1)
+	minusBtn.BackgroundColor3 = Color3.fromRGB(85, 45, 45)
+	minusBtn.Font = Enum.Font.SourceSansBold
+	minusBtn.TextSize = 16
+	
+	local mc = Instance.new("UICorner", minusBtn)
+	mc.CornerRadius = UDim.new(0, 5)
+	
+	local plusBtn = Instance.new("TextButton", container)
+	plusBtn.Size = UDim2.new(0.22, 0, 1, 0)
+	plusBtn.Position = UDim2.new(0.78, 0, 0, 0)
+	plusBtn.Text = "+"
+	plusBtn.TextColor3 = Color3.new(1, 1, 1)
+	plusBtn.BackgroundColor3 = Color3.fromRGB(45, 85, 45)
+	plusBtn.Font = Enum.Font.SourceSansBold
+	plusBtn.TextSize = 16
+	
+	local pc = Instance.new("UICorner", plusBtn)
+	pc.CornerRadius = UDim.new(0, 5)
+	
+	return label, minusBtn, plusBtn
+end
+
 addTitle("Hitbox Configuration")
 local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
 local hitBtn = addBtn("Hitbox: OFF")
@@ -210,8 +257,8 @@ local espBtn = addBtn("ESP: OFF")
 local transBtn = addBtn("ESPTransparency: 0.5")
 
 addTitle("Player Configuration")
-local wsBtn = addBtn("WS: 16")
-local jpBtn = addBtn("JP: 50")
+local wsLabel, wsMinus, wsPlus = addStatControl("WS", 16)
+local jpLabel, jpMinus, jpPlus = addStatControl("JP", 50)
 local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
@@ -386,14 +433,19 @@ local function handlePlayerHitbox(char, playerObj)
 		savePartState(char, target, originalPlayerSizes)
 
 		for _, partName in ipairs(candidateParts) do
-			if partName ~= target.Name then
-				restorePart(char, partName, originalPlayerSizes)
+			local p = char:FindFirstChild(partName)
+			if p then
+				savePartState(char, p, originalPlayerSizes)
+				p.Massless = true -- Force completely massless across all elements to stop freezing physics loops
+				if partName ~= target.Name then
+					restorePart(char, partName, originalPlayerSizes)
+					p.Massless = true
+				end
 			end
 		end
 
 		target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
 		target.Transparency = config.HitboxTransparency
-		target.Massless = true
 		target.CanCollide = false
 		target.CanTouch = true
 		target.CanQuery = true
@@ -423,14 +475,19 @@ local function handleNPCHitbox(char)
 		savePartState(char, target, originalNPCSizes)
 
 		for _, partName in ipairs(candidateParts) do
-			if partName ~= target.Name then
-				restorePart(char, partName, originalNPCSizes)
+			local p = char:FindFirstChild(partName)
+			if p then
+				savePartState(char, p, originalNPCSizes)
+				p.Massless = true -- Stop NPC anchor/tilt/freezing issues when size scaling
+				if partName ~= target.Name then
+					restorePart(char, partName, originalNPCSizes)
+					p.Massless = true
+				end
 			end
 		end
 
 		target.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
 		target.Transparency = config.NPCHitboxTransparency
-		target.Massless = true
 		target.CanCollide = false
 		target.CanTouch = true
 		target.CanQuery = true
@@ -475,7 +532,6 @@ local function refreshAllNPCs()
 	end
 end
 
--- Force updates when local player respawns to guarantee bypass works immediately
 LocalPlayer.CharacterAdded:Connect(function(char)
 	local hum = char:WaitForChild("Humanoid", 10)
 	if hum and config.BypassWalkspeedJump then
@@ -656,14 +712,24 @@ transBtn.MouseButton1Click:Connect(function()
 	refreshAllPlayers()
 end)
 
-wsBtn.MouseButton1Click:Connect(function()
-	config.WS = (config.WS >= 100) and 16 or (config.WS + 1)
-	wsBtn.Text = "WS: " .. config.WS
+wsMinus.MouseButton1Click:Connect(function()
+	config.WS = math.max(0, config.WS - 1)
+	wsLabel.Text = "WS: " .. config.WS
 end)
 
-jpBtn.MouseButton1Click:Connect(function()
-	config.JP = (config.JP >= 200) and 50 or (config.JP + 15)
-	jpBtn.Text = "JP: " .. config.JP
+wsPlus.MouseButton1Click:Connect(function()
+	config.WS = math.min(150, config.WS + 1)
+	wsLabel.Text = "WS: " .. config.WS
+end)
+
+jpMinus.MouseButton1Click:Connect(function()
+	config.JP = math.max(0, config.JP - 5)
+	jpLabel.Text = "JP: " .. config.JP
+end)
+
+jpPlus.MouseButton1Click:Connect(function()
+	config.JP = math.min(300, config.JP + 5)
+	jpLabel.Text = "JP: " .. config.JP
 end)
 
 globalHitboxBtn.MouseButton1Click:Connect(function()
@@ -682,7 +748,6 @@ bypassBtn.MouseButton1Click:Connect(function()
 	config.BypassWalkspeedJump = not config.BypassWalkspeedJump
 	bypassBtn.Text = "Toggle Bypass WS/JP: " .. (config.BypassWalkspeedJump and "ON" or "OFF")
 	
-	-- Instantly restore default speed/jump values when toggled off
 	if not config.BypassWalkspeedJump then
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -707,8 +772,8 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.GlobalHitboxToggle = true
 	config.BypassWalkspeedJump = true
 
-	wsBtn.Text = "WS: 16"
-	jpBtn.Text = "JP: 50"
+	wsLabel.Text = "WS: 16"
+	jpLabel.Text = "JP: 50"
 	sizeBtn.Text = "Size: 5"
 	hitTransBtn.Text = "Hitbox Transparency: 0.5"
 	transBtn.Text = "ESPTransparency: 0.5"
