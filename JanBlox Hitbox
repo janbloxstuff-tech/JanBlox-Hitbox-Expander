@@ -382,7 +382,7 @@ local function handlePlayerHitbox(char, playerObj)
 	local targetName = config.TargetPart
 	local target = getTargetPart(char, targetName)
 
-    if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) and target then
+	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) and target then
 		savePartState(char, target, originalPlayerSizes)
 
 		for _, partName in ipairs(candidateParts) do
@@ -405,7 +405,6 @@ local function handlePlayerHitbox(char, playerObj)
 end
 
 local function handleNPCHitbox(char)
-	-- Don't apply hitbox to the player's own character
 	if char == LocalPlayer.Character then
 		return
 	end
@@ -476,6 +475,15 @@ local function refreshAllNPCs()
 	end
 end
 
+-- Force updates when local player respawns to guarantee bypass works immediately
+LocalPlayer.CharacterAdded:Connect(function(char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if hum and config.BypassWalkspeedJump then
+		hum.WalkSpeed = config.WS
+		hum.JumpPower = config.JP
+	end
+end)
+
 task.spawn(function()
 	while true do
 		updateNPCCache()
@@ -504,16 +512,17 @@ task.spawn(function()
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-		if hum and config.BypassWalkspeedJump then
-			if hum.WalkSpeed ~= config.WS then
-				hum.WalkSpeed = config.WS
-			end
-			if hum.JumpPower ~= config.JP then
-				hum.JumpPower = config.JP
-			end
-			-- Only AutoJump if the feature is enabled
-			if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
-				hum.Jump = true
+		if hum then
+			if config.BypassWalkspeedJump then
+				if hum.WalkSpeed ~= config.WS then
+					hum.WalkSpeed = config.WS
+				end
+				if hum.JumpPower ~= config.JP then
+					hum.JumpPower = config.JP
+				end
+				if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
+					hum.Jump = true
+				end
 			end
 		end
 
@@ -672,6 +681,16 @@ end)
 bypassBtn.MouseButton1Click:Connect(function()
 	config.BypassWalkspeedJump = not config.BypassWalkspeedJump
 	bypassBtn.Text = "Toggle Bypass WS/JP: " .. (config.BypassWalkspeedJump and "ON" or "OFF")
+	
+	-- Instantly restore default speed/jump values when toggled off
+	if not config.BypassWalkspeedJump then
+		local char = LocalPlayer.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.WalkSpeed = 16
+			hum.JumpPower = 50
+		end
+	end
 end)
 
 resetBtn.MouseButton1Click:Connect(function()
@@ -701,11 +720,17 @@ resetBtn.MouseButton1Click:Connect(function()
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
 	bypassBtn.Text = "Toggle Bypass WS/JP: ON"
 
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.WalkSpeed = 16
+		hum.JumpPower = 50
+	end
+
 	refreshAllPlayers()
 	refreshAllNPCs()
 end)
 
--- Toggle L key to toggle Global Hitbox
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
 		config.GlobalHitboxToggle = not config.GlobalHitboxToggle
