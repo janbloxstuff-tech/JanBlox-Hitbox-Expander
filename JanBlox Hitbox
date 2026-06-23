@@ -493,23 +493,21 @@ task.spawn(function()
 			end
 		end
 
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		if hum then
-			if hum.WalkSpeed ~= config.WS then
-				hum.WalkSpeed = config.WS
-			end
-			if hum.JumpPower ~= config.JP then
-				hum.JumpPower = config.JP
-			end
-			if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
-				hum.Jump = true
-			end
-		end
+local char = LocalPlayer.Character
+local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-		task.wait(0.15)
-	end
-end)
+-- UPDATED LINE: Added "and not config.FlyEnabled" so the background loop stops breaking active flight physics
+if hum and not config.FlyEnabled then
+    if hum.WalkSpeed ~= config.WS then
+        hum.WalkSpeed = config.WS
+    end
+    if hum.JumpPower ~= config.JP then
+        hum.JumpPower = config.JP
+    end
+    if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
+        hum.Jump = true
+    end
+end
 
 local flyRenderConn
 local flyBodyGyro, flyBodyVelocity
