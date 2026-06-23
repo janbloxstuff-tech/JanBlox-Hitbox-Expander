@@ -248,6 +248,16 @@ local function restoreAllCandidateParts(char, storage)
 	end
 end
 
+local function setCandidateContacts(char, enabled)
+	for _, partName in ipairs(candidateParts) do
+		local part = char:FindFirstChild(partName)
+		if part then
+			part.CanTouch = enabled
+			part.CanQuery = enabled
+		end
+	end
+end
+
 local function getTargetPart(char, targetName)
 	local target = char:FindFirstChild(targetName)
 
@@ -262,8 +272,13 @@ local function getTargetPart(char, targetName)
 	return target
 end
 
+local function isAliveCharacter(char)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	return hum ~= nil and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead
+end
+
 local function destroyESP(char)
-	local hl = char:FindFirstChild("JanHighlight")
+	local hl = char:FindFirstChild("ESPHighlight")
 	if hl then
 		hl:Destroy()
 	end
@@ -278,6 +293,11 @@ local function destroyESP(char)
 end
 
 local function updateESP(char, playerObj)
+	if not isAliveCharacter(char) then
+		destroyESP(char)
+		return
+	end
+
 	local showESP = config.ESPEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team)
 
 	if not showESP then
@@ -290,7 +310,7 @@ local function updateESP(char, playerObj)
 		return
 	end
 
-	local hl = char:FindFirstChild("JanHighlight")
+	local hl = char:FindFirstChild("ESPHighlight")
 	if not hl then
 		hl = Instance.new("Highlight")
 		hl.Name = "ESPHighlight"
@@ -329,6 +349,15 @@ local function updateESP(char, playerObj)
 end
 
 local function handlePlayerHitbox(char, playerObj)
+	local alive = isAliveCharacter(char)
+
+	if not alive then
+		restoreAllCandidateParts(char, originalPlayerSizes)
+		setCandidateContacts(char, false)
+		destroyESP(char)
+		return
+	end
+
 	local targetName = config.TargetPart
 	local target = getTargetPart(char, targetName)
 
@@ -347,12 +376,21 @@ local function handlePlayerHitbox(char, playerObj)
 		target.CanCollide = false
 		target.CanTouch = true
 		target.CanQuery = true
+		setCandidateContacts(char, true)
 	else
 		restoreAllCandidateParts(char, originalPlayerSizes)
+		setCandidateContacts(char, true)
 	end
 end
 
 local function handleNPCHitbox(char)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
+		restoreAllCandidateParts(char, originalNPCSizes)
+		setCandidateContacts(char, false)
+		return
+	end
+
 	local targetName = config.NPCTargetPart
 	local target = getTargetPart(char, targetName)
 
@@ -371,8 +409,10 @@ local function handleNPCHitbox(char)
 		target.CanCollide = false
 		target.CanTouch = true
 		target.CanQuery = true
+		setCandidateContacts(char, true)
 	else
 		restoreAllCandidateParts(char, originalNPCSizes)
+		setCandidateContacts(char, true)
 	end
 end
 
