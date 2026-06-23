@@ -33,14 +33,7 @@ local config = {
 	GlobalHitboxToggle = true
 }
 
-local originalPlayerSizes = setmetatable({}, { __mode = "k" })
-local originalNPCSizes = setmetatable({}, { __mode = "k" })
 local cachedNPCs = {}
-
-local candidateParts = {
-	"Head",
-	"HumanoidRootPart"
-}
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "JanBloxGui"
@@ -264,53 +257,6 @@ local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
 
-local function savePartState(char, part, storage)
-	if not storage[char] then
-		storage[char] = {}
-	end
-
-	if not storage[char][part.Name] then
-		storage[char][part.Name] = {
-			Size = part.Size,
-			Transparency = part.Transparency,
-			CanCollide = part.CanCollide,
-			CanTouch = part.CanTouch,
-			CanQuery = part.CanQuery,
-			Massless = part.Massless
-		}
-	end
-end
-
-local function restorePart(char, partName, storage)
-	local charStorage = storage[char]
-	if not charStorage then
-		return
-	end
-
-	local data = charStorage[partName]
-	if not data then
-		return
-	end
-
-	local part = char:FindFirstChild(partName)
-	if not part then
-		return
-	end
-
-	part.Size = data.Size
-	part.Transparency = data.Transparency
-	part.CanCollide = data.CanCollide
-	part.CanTouch = data.CanTouch
-	part.CanQuery = data.CanQuery
-	part.Massless = data.Massless
-end
-
-local function restoreAllCandidateParts(char, storage)
-	for _, partName in ipairs(candidateParts) do
-		restorePart(char, partName, storage)
-	end
-end
-
 local function isAliveCharacter(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	return hum ~= nil and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead
@@ -393,38 +339,54 @@ local function updateESP(char, playerObj)
 	end
 end
 
+-- GetPartBoundsInBox visual component builder
+local function updateVisualBox(char, targetPartName, size, transparency)
+	local targetPart = char:FindFirstChild(targetPartName)
+	if not targetPart then
+		-- Fallback to HumanoidRootPart if the specified part can't be fetched
+		targetPart = char:FindFirstChild("HumanoidRootPart")
+	end
+	if not targetPart then return end
+
+	local box = char:FindFirstChild("JanBoxHitbox")
+	if not box then
+		box = Instance.new("Part")
+		box.Name = "JanBoxHitbox"
+		box.CastShadow = false
+		box.CanCollide = false
+		box.CanTouch = false
+		box.CanQuery = false
+		box.Material = Enum.Material.ForceField
+		box.Parent = char
+	end
+
+	box.Size = Vector3.new(size, size, size)
+	box.Transparency = transparency
+	box.CFrame = targetPart.CFrame
+end
+
+local function removeVisualBox(char)
+	local box = char:FindFirstChild("JanBoxHitbox")
+	if box then
+		box:Destroy()
+	end
+end
+
 local function handlePlayerHitbox(char, playerObj)
 	local alive = isAliveCharacter(char)
 
 	if not alive then
-		restoreAllCandidateParts(char, originalPlayerSizes)
+		removeVisualBox(char)
 		destroyESP(char)
 		return
 	end
 
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	local targetPart = char:FindFirstChild(config.TargetPart)
-
 	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
 		pcall(function()
-			if hrp then
-				savePartState(char, hrp, originalPlayerSizes)
-				hrp.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-				hrp.CanCollide = false
-				hrp.Massless = false
-				hrp.CanTouch = true
-			end
-			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
-				savePartState(char, targetPart, originalPlayerSizes)
-				targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-				targetPart.Transparency = config.HitboxTransparency
-				targetPart.CanCollide = false
-				targetPart.Massless = false
-				hrp.CanTouch = true
-			end
+			updateVisualBox(char, config.TargetPart, config.HitboxSize, config.HitboxTransparency)
 		end)
 	else
-		restoreAllCandidateParts(char, originalPlayerSizes)
+		removeVisualBox(char)
 	end
 end
 
@@ -435,33 +397,16 @@ local function handleNPCHitbox(char)
 
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
-		restoreAllCandidateParts(char, originalNPCSizes)
+		removeVisualBox(char)
 		return
 	end
 
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	local targetPart = char:FindFirstChild(config.NPCTargetPart)
-
 	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
 		pcall(function()
-			if hrp then
-				savePartState(char, hrp, originalNPCSizes)
-				hrp.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
-				hrp.CanCollide = false
-				hrp.Massless = false
-				hrp.CanTouch = true
-			end
-			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
-				savePartState(char, targetPart, originalNPCSizes)
-				targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
-				targetPart.Transparency = config.NPCHitboxTransparency
-				targetPart.CanCollide = false
-				targetPart.Massless = false
-				hrp.CanTouch = true
-			end
+			updateVisualBox(char, config.NPCTargetPart, config.NPCHitboxSize, config.NPCHitboxTransparency)
 		end)
 	else
-		restoreAllCandidateParts(char, originalNPCSizes)
+		removeVisualBox(char)
 	end
 end
 
@@ -614,9 +559,25 @@ end
 
 toggleBtn.MouseButton1Click:Connect(toggleMenuVisuals)
 
+local function swapTargetParts()
+	config.TargetPart = (config.TargetPart == "Head") and "HumanoidRootPart" or "Head"
+	swapBtn.Text = "Target: " .. config.TargetPart
+	refreshAllPlayers()
+end
+
+local function swapNPCTargetParts()
+	config.NPCTargetPart = (config.NPCTargetPart == "Head") and "HumanoidRootPart" or "Head"
+	npcSwapBtn.Text = "NPC Target: " .. config.NPCTargetPart
+	refreshAllNPCs()
+end
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if not gameProcessed and input.KeyCode == Enum.KeyCode.K then
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.K then
 		toggleMenuVisuals()
+	elseif input.KeyCode == Enum.KeyCode.I then
+		swapTargetParts()
+		swapNPCTargetParts()
 	end
 end)
 
@@ -626,11 +587,7 @@ hitBtn.MouseButton1Click:Connect(function()
 	refreshAllPlayers()
 end)
 
-swapBtn.MouseButton1Click:Connect(function()
-	config.TargetPart = (config.TargetPart == "Head") and "HumanoidRootPart" or "Head"
-	swapBtn.Text = "Target: " .. config.TargetPart
-	refreshAllPlayers()
-end)
+swapBtn.MouseButton1Click:Connect(swapTargetParts)
 
 sizeBtn.MouseButton1Click:Connect(function()
 	config.HitboxSize = (config.HitboxSize >= 70) and 5 or (config.HitboxSize + 5)
@@ -650,11 +607,7 @@ npcHitBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
-npcSwapBtn.MouseButton1Click:Connect(function()
-	config.NPCTargetPart = (config.NPCTargetPart == "Head") and "HumanoidRootPart" or "Head"
-	npcSwapBtn.Text = "NPC Target: " .. config.NPCTargetPart
-	refreshAllNPCs()
-end)
+npcSwapBtn.MouseButton1Click:Connect(swapNPCTargetParts)
 
 npcSizeBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxSize = (config.NPCHitboxSize >= 70) and 5 or (config.NPCHitboxSize + 5)
