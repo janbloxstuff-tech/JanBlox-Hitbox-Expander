@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
@@ -38,9 +39,7 @@ local cachedNPCs = {}
 
 local candidateParts = {
 	"Head",
-	"UpperTorso",
-	"Torso",
-	"LowerTorso"
+	"HumanoidRootPart"
 }
 
 local screenGui = Instance.new("ScreenGui")
@@ -238,6 +237,8 @@ local function addStatControl(labelPrefix, defaultValue)
 	return label, minusBtn, plusBtn
 end
 
+local rejoinBtn = addBtn("⚡ Rejoin Server")
+
 addTitle("Hitbox Configuration")
 local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
 local hitBtn = addBtn("Hitbox: OFF")
@@ -308,30 +309,6 @@ local function restoreAllCandidateParts(char, storage)
 	for _, partName in ipairs(candidateParts) do
 		restorePart(char, partName, storage)
 	end
-end
-
-local function setCandidateContacts(char, enabled)
-	for _, partName in ipairs(candidateParts) do
-		local part = char:FindFirstChild(partName)
-		if part then
-			part.CanTouch = enabled
-			part.CanQuery = enabled
-		end
-	end
-end
-
-local function getTargetPart(char, targetName)
-	local target = char:FindFirstChild(targetName)
-
-	if not target and targetName == "UpperTorso" then
-		target = char:FindFirstChild("Torso") or char:FindFirstChild("LowerTorso")
-	end
-
-	if not target and targetName == "Head" then
-		target = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
-	end
-
-	return target
 end
 
 local function isAliveCharacter(char)
@@ -421,38 +398,31 @@ local function handlePlayerHitbox(char, playerObj)
 
 	if not alive then
 		restoreAllCandidateParts(char, originalPlayerSizes)
-		setCandidateContacts(char, false)
 		destroyESP(char)
 		return
 	end
 
-	local targetName = config.TargetPart
-	local target = getTargetPart(char, targetName)
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local targetPart = char:FindFirstChild(config.TargetPart)
 
-	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) and target then
-		savePartState(char, target, originalPlayerSizes)
-
-		for _, partName in ipairs(candidateParts) do
-			local p = char:FindFirstChild(partName)
-			if p then
-				savePartState(char, p, originalPlayerSizes)
-				p.Massless = true -- Force completely massless across all elements to stop freezing physics loops
-				if partName ~= target.Name then
-					restorePart(char, partName, originalPlayerSizes)
-					p.Massless = true
-				end
+	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
+		pcall(function()
+			if hrp then
+				savePartState(char, hrp, originalPlayerSizes)
+				hrp.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+				hrp.CanCollide = false
+				hrp.Massless = true
 			end
-		end
-
-		target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-		target.Transparency = config.HitboxTransparency
-		target.CanCollide = false
-		target.CanTouch = true
-		target.CanQuery = true
-		setCandidateContacts(char, true)
+			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
+				savePartState(char, targetPart, originalPlayerSizes)
+				targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+				targetPart.Transparency = config.HitboxTransparency
+				targetPart.CanCollide = false
+				targetPart.Massless = true
+			end
+		end)
 	else
 		restoreAllCandidateParts(char, originalPlayerSizes)
-		setCandidateContacts(char, true)
 	end
 end
 
@@ -464,37 +434,30 @@ local function handleNPCHitbox(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
 		restoreAllCandidateParts(char, originalNPCSizes)
-		setCandidateContacts(char, false)
 		return
 	end
 
-	local targetName = config.NPCTargetPart
-	local target = getTargetPart(char, targetName)
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local targetPart = char:FindFirstChild(config.NPCTargetPart)
 
-	if config.GlobalHitboxToggle and config.NPCHitboxEnabled and target then
-		savePartState(char, target, originalNPCSizes)
-
-		for _, partName in ipairs(candidateParts) do
-			local p = char:FindFirstChild(partName)
-			if p then
-				savePartState(char, p, originalNPCSizes)
-				p.Massless = true -- Stop NPC anchor/tilt/freezing issues when size scaling
-				if partName ~= target.Name then
-					restorePart(char, partName, originalNPCSizes)
-					p.Massless = true
-				end
+	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
+		pcall(function()
+			if hrp then
+				savePartState(char, hrp, originalNPCSizes)
+				hrp.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+				hrp.CanCollide = false
+				hrp.Massless = true
 			end
-		end
-
-		target.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
-		target.Transparency = config.NPCHitboxTransparency
-		target.CanCollide = false
-		target.CanTouch = true
-		target.CanQuery = true
-		setCandidateContacts(char, true)
+			if targetPart and targetPart.Name ~= "HumanoidRootPart" then
+				savePartState(char, targetPart, originalNPCSizes)
+				targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+				targetPart.Transparency = config.NPCHitboxTransparency
+				targetPart.CanCollide = false
+				targetPart.Massless = true
+			end
+		end)
 	else
 		restoreAllCandidateParts(char, originalNPCSizes)
-		setCandidateContacts(char, true)
 	end
 end
 
@@ -532,6 +495,16 @@ local function refreshAllNPCs()
 	end
 end
 
+rejoinBtn.MouseButton1Click:Connect(function()
+	pcall(function()
+		if #Players:GetPlayers() <= 1 then
+			TeleportService:Teleport(game.PlaceId, LocalPlayer)
+		else
+			TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+		end
+	end)
+end)
+
 LocalPlayer.CharacterAdded:Connect(function(char)
 	local hum = char:WaitForChild("Humanoid", 10)
 	if hum and config.BypassWalkspeedJump then
@@ -547,42 +520,39 @@ task.spawn(function()
 	end
 end)
 
-task.spawn(function()
-	while true do
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= LocalPlayer and p.Character then
-				updateESP(p.Character, p)
-				handlePlayerHitbox(p.Character, p)
+-- Runs every step frame to instantly match requirements and secure continuous hitbox mapping
+RunService.RenderStepped:Connect(function()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and p.Character then
+			updateESP(p.Character, p)
+			handlePlayerHitbox(p.Character, p)
+		end
+	end
+
+	for i = #cachedNPCs, 1, -1 do
+		local npc = cachedNPCs[i]
+		if npc and npc.Parent then
+			handleNPCHitbox(npc)
+		else
+			table.remove(cachedNPCs, i)
+		end
+	end
+
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+	if hum then
+		if config.BypassWalkspeedJump then
+			if hum.WalkSpeed ~= config.WS then
+				hum.WalkSpeed = config.WS
+			end
+			if hum.JumpPower ~= config.JP then
+				hum.JumpPower = config.JP
+			end
+			if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
+				hum.Jump = true
 			end
 		end
-
-		for i = #cachedNPCs, 1, -1 do
-			local npc = cachedNPCs[i]
-			if npc and npc.Parent then
-				handleNPCHitbox(npc)
-			else
-				table.remove(cachedNPCs, i)
-			end
-		end
-
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-		if hum then
-			if config.BypassWalkspeedJump then
-				if hum.WalkSpeed ~= config.WS then
-					hum.WalkSpeed = config.WS
-				end
-				if hum.JumpPower ~= config.JP then
-					hum.JumpPower = config.JP
-				end
-				if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
-					hum.Jump = true
-				end
-			end
-		end
-
-		task.wait(0.15)
 	end
 end)
 
@@ -653,7 +623,7 @@ hitBtn.MouseButton1Click:Connect(function()
 end)
 
 swapBtn.MouseButton1Click:Connect(function()
-	config.TargetPart = (config.TargetPart == "Head") and "UpperTorso" or "Head"
+	config.TargetPart = (config.TargetPart == "Head") and "HumanoidRootPart" or "Head"
 	swapBtn.Text = "Target: " .. config.TargetPart
 	refreshAllPlayers()
 end)
@@ -677,7 +647,7 @@ npcHitBtn.MouseButton1Click:Connect(function()
 end)
 
 npcSwapBtn.MouseButton1Click:Connect(function()
-	config.NPCTargetPart = (config.NPCTargetPart == "Head") and "UpperTorso" or "Head"
+	config.NPCTargetPart = (config.NPCTargetPart == "Head") and "HumanoidRootPart" or "Head"
 	npcSwapBtn.Text = "NPC Target: " .. config.NPCTargetPart
 	refreshAllNPCs()
 end)
