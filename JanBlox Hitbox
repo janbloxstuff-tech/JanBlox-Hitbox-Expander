@@ -51,7 +51,7 @@ mainCorner.CornerRadius = UDim.new(0, 8)
 local mainHeaderTitle = Instance.new("TextLabel", mainFrame)
 mainHeaderTitle.Size = UDim2.new(1, 0, 0, 35)
 mainHeaderTitle.Position = UDim2.new(0, 0, 0, 0)
-mainHeaderTitle.Text = "JanBlox Gui"
+mainHeaderTitle.Text = "JanBlox Gui V2"
 mainHeaderTitle.TextColor3 = Color3.new(1, 1, 1)
 mainHeaderTitle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
 mainHeaderTitle.Font = Enum.Font.SourceSansBold
@@ -293,7 +293,7 @@ local function updateESP(char, playerObj)
 	local hl = char:FindFirstChild("JanHighlight")
 	if not hl then
 		hl = Instance.new("Highlight")
-		hl.Name = "JanHighlight"
+		hl.Name = "ESPHighlight"
 		hl.Parent = char
 	end
 
@@ -345,8 +345,8 @@ local function handlePlayerHitbox(char, playerObj)
 		target.Transparency = config.HitboxTransparency
 		target.Massless = true
 		target.CanCollide = false
-		target.CanTouch = false
-		target.CanQuery = false
+		target.CanTouch = true
+		target.CanQuery = true
 	else
 		restoreAllCandidateParts(char, originalPlayerSizes)
 	end
@@ -369,8 +369,8 @@ local function handleNPCHitbox(char)
 		target.Transparency = config.NPCHitboxTransparency
 		target.Massless = true
 		target.CanCollide = false
-		target.CanTouch = false
-		target.CanQuery = false
+		target.CanTouch = true
+		target.CanQuery = true
 	else
 		restoreAllCandidateParts(char, originalNPCSizes)
 	end
