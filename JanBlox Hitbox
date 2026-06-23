@@ -230,7 +230,7 @@ local function addStatControl(labelPrefix, defaultValue)
 	return label, minusBtn, plusBtn
 end
 
-local rejoinBtn = addBtn("⚡ Rejoin Server")
+local rejoinBtn = addBtn("Rejoin Server")
 
 addTitle("Hitbox Configuration")
 local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
@@ -351,10 +351,10 @@ local function updateVisualBox(char, targetPartName, size, transparency)
 	local box = char:FindFirstChild("JanBoxHitbox")
 	if not box then
 		box = Instance.new("Part")
-		box.Name = "JanBoxHitbox"
+		box.Name = "Hitbox"
 		box.CastShadow = false
 		box.CanCollide = false
-		box.CanTouch = false
+		box.CanTouch = true
 		box.CanQuery = false
 		box.Material = Enum.Material.ForceField
 		box.Parent = char
