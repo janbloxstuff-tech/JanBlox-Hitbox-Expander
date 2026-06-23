@@ -100,7 +100,7 @@ local function makeDraggable(frame, handle)
         end
     end)
     
-    RunService.RenderStepped:Connect(function()
+    RunService.Heartbeat:Connect(function()
         if dragging and dragInput then
             local delta = dragInput.Position - dragStart
             frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
@@ -108,8 +108,8 @@ local function makeDraggable(frame, handle)
     end)
 end
 
-makeDraggable(toggleBtn) -- Toggle button draggable
-makeDraggable(mainFrame, mainHeaderTitle) -- Header drags the whole menu frame
+makeDraggable(toggleBtn) 
+makeDraggable(mainFrame, mainHeaderTitle) 
 
 -- Order Tracker to force top-to-bottom alignment inside ScrollFrame
 local layoutOrderCounter = 0
@@ -146,27 +146,23 @@ end
 -- Assemble GUI Layout In Your Exact Order
 -- ==========================================
 
--- 1st Section
 addTitle("Hitbox Configuration")
 local hitBtn = addBtn("Hitbox: OFF")
 local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
 local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
 
--- 2nd Section (NPC Hitbox Section)
 addTitle("NPC Configuration")
 local npcHitBtn = addBtn("NPC Hitbox: OFF")
 local npcSwapBtn = addBtn("NPC Target: Head")
 local npcSizeBtn = addBtn("NPC Size: 5")
 local npcTransBtn = addBtn("NPC Transparency: 0.5")
 
--- 3rd Section
 addTitle("ESP Configuration")
 local teamBtn = addBtn("Team Check: OFF")
 local espBtn = addBtn("ESP: OFF")
 local transBtn = addBtn("ESPTransparency: 0.5")
 
--- 4th Section
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
@@ -178,6 +174,9 @@ local function restorePart(char, partName, storage)
     if part and storage[char] and storage[char][partName] then
         part.Size = storage[char][partName].Size
         part.Transparency = storage[char][partName].Transparency
+        part.CanCollide = storage[char][partName].CanCollide
+        part.CanTouch = storage[char][partName].CanTouch
+        part.CanQuery = storage[char][partName].CanQuery
         part.Massless = false
     end
 end
@@ -238,7 +237,13 @@ local function handlePlayerHitbox(c, playerObj)
     if config.HitboxEnabled and passesTeamCheck and target then
         if not originalPlayerSizes[c] then originalPlayerSizes[c] = {} end
         if not originalPlayerSizes[c][target.Name] then
-            originalPlayerSizes[c][target.Name] = {Size = target.Size, Transparency = target.Transparency}
+            originalPlayerSizes[c][target.Name] = {
+                Size = target.Size, 
+                Transparency = target.Transparency,
+                CanCollide = target.CanCollide,
+                CanTouch = target.CanTouch,
+                CanQuery = target.CanQuery
+            }
         end
         
         restorePart(c, other, originalPlayerSizes)
@@ -249,6 +254,8 @@ local function handlePlayerHitbox(c, playerObj)
         target.Transparency = config.HitboxTransparency
         target.Massless = true
         target.CanCollide = false
+        target.CanTouch = false -- Fixes physical touch-lag completely
+        target.CanQuery = false -- Fixes raycast lighting-lag completely
     else
         restorePart(c, "Head", originalPlayerSizes)
         restorePart(c, "UpperTorso", originalPlayerSizes)
@@ -271,7 +278,13 @@ local function handleNPCHitbox(c)
     if config.NPCHitboxEnabled and target then
         if not originalNPCSizes[c] then originalNPCSizes[c] = {} end
         if not originalNPCSizes[c][target.Name] then
-            originalNPCSizes[c][target.Name] = {Size = target.Size, Transparency = target.Transparency}
+            originalNPCSizes[c][target.Name] = {
+                Size = target.Size, 
+                Transparency = target.Transparency,
+                CanCollide = target.CanCollide,
+                CanTouch = target.CanTouch,
+                CanQuery = target.CanQuery
+            }
         end
         
         restorePart(c, other, originalNPCSizes)
@@ -282,6 +295,8 @@ local function handleNPCHitbox(c)
         target.Transparency = config.NPCHitboxTransparency
         target.Massless = true
         target.CanCollide = false
+        target.CanTouch = false -- Fixes physical touch-lag completely
+        target.CanQuery = false -- Fixes raycast lighting-lag completely
     else
         restorePart(c, "Head", originalNPCSizes)
         restorePart(c, "UpperTorso", originalNPCSizes)
@@ -290,21 +305,31 @@ local function handleNPCHitbox(c)
     end
 end
 
--- Deep Workspace Scanner specifically checking paths for NPCs
-local function scanForNPCs(root)
-    for _, obj in pairs(root:GetChildren()) do
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
-            if not Players:GetPlayerFromCharacter(obj) and obj ~= LocalPlayer.Character then
-                handleNPCHitbox(obj)
+-- Optimized cache system for localized NPC updates instead of doing a complete search loop
+local cachedNPCs = {}
+local function updateNPCCache()
+    local currentNPCs = {}
+    for _, desc in pairs(workspace:GetDescendants()) do
+        if desc:IsA("Humanoid") then
+            local model = desc.Parent
+            if model and model:IsA("Model") and model ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(model) then
+                table.insert(currentNPCs, model)
             end
-        elseif obj:IsA("Folder") or obj:IsA("Model") then
-            scanForNPCs(obj)
         end
     end
+    cachedNPCs = currentNPCs
 end
 
--- Main Runtime Engine Loop
-RunService.RenderStepped:Connect(function()
+-- Initialize the NPC scanning cache once and update it safely every 3 seconds instead of every frame
+task.spawn(function()
+    while true do
+        updateNPCCache()
+        task.wait(3)
+    end
+end)
+
+-- Main Run Engine Loops (Separated and throttled for optimization)
+RunService.Heartbeat:Connect(function()
     -- Track Players
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer or not p.Character then continue end
@@ -312,10 +337,17 @@ RunService.RenderStepped:Connect(function()
         handlePlayerHitbox(p.Character, p)
     end
     
-    -- Track NPCs
-    scanForNPCs(workspace)
-    
-    -- Local Player Modifications
+    -- Process Cached NPCs instantly without lookups
+    for i = 1, #cachedNPCs do
+        local npc = cachedNPCs[i]
+        if npc and npc.Parent then
+            handleNPCHitbox(npc)
+        end
+    end
+end)
+
+-- Faster specific updates just for Humanoid speed stats
+RunService.RenderStepped:Connect(function()
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
         LocalPlayer.Character.Humanoid.WalkSpeed = config.WS
         LocalPlayer.Character.Humanoid.JumpPower = config.JP
@@ -326,12 +358,10 @@ end)
 -- Button Bindings & Control Actions
 -- ==========================================
 
--- Open / Close Action
 toggleBtn.MouseButton1Click:Connect(function()
     mainFrame.Visible = not mainFrame.Visible
 end)
 
--- Hitbox Configuration Actions
 hitBtn.MouseButton1Click:Connect(function() 
     config.HitboxEnabled = not config.HitboxEnabled 
     hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF") 
@@ -352,7 +382,6 @@ hitTransBtn.MouseButton1Click:Connect(function()
     hitTransBtn.Text = "Hitbox Transparency: " .. tostring(config.HitboxTransparency)
 end)
 
--- NPC Configuration Actions
 npcHitBtn.MouseButton1Click:Connect(function()
     config.NPCHitboxEnabled = not config.NPCHitboxEnabled
     npcHitBtn.Text = "NPC Hitbox: " .. (config.NPCHitboxEnabled and "ON" or "OFF")
@@ -373,7 +402,6 @@ npcTransBtn.MouseButton1Click:Connect(function()
     npcTransBtn.Text = "NPC Transparency: " .. tostring(config.NPCHitboxTransparency)
 end)
 
--- ESP Configuration Actions
 teamBtn.MouseButton1Click:Connect(function() 
     config.TeamCheck = not config.TeamCheck 
     teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF") 
@@ -389,7 +417,6 @@ transBtn.MouseButton1Click:Connect(function()
     transBtn.Text = "ESPTransparency: " .. tostring(config.ESPTransparency)
 end)
 
--- Player Configuration Actions
 wsBtn.MouseButton1Click:Connect(function() 
     config.WS = (config.WS >= 100) and 16 or (config.WS + 10)
     wsBtn.Text = "WS: " .. config.WS 
