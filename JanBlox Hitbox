@@ -291,7 +291,7 @@ local function handlePlayerHitbox(c, playerObj)
         target.Transparency = config.HitboxTransparency
         target.Massless = true
         target.CanCollide = false
-        target.CanTouch = true 
+        target.CanTouch = false 
         target.CanQuery = false 
     else
         restorePart(c, "Head", originalPlayerSizes)
@@ -332,7 +332,7 @@ local function handleNPCHitbox(c)
         target.Transparency = config.NPCHitboxTransparency
         target.Massless = true
         target.CanCollide = false
-        target.CanTouch = true 
+        target.CanTouch = false 
         target.CanQuery = false 
     else
         restorePart(c, "Head", originalNPCSizes)
