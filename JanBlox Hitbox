@@ -4,7 +4,11 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+if not PlayerGui then
+	warn("❌ PlayerGui failed to load - script stopping")
+	return
+end
 
 local config = {
 	HitboxEnabled = false,
