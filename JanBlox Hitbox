@@ -507,7 +507,7 @@ task.spawn(function()
 	end
 end)
 
-local menuMoving = false
+local menuMoving = false -- Fixed: lowercase 'local'
 local originalSize = mainFrame.Size
 
 local function toggleMenuVisuals()
@@ -549,8 +549,10 @@ local function toggleMenuVisuals()
 	end
 end
 
+-- Hook up the button click (Only needed once!)
 toggleBtn.MouseButton1Click:Connect(toggleMenuVisuals)
 
+-- PC Keybind support
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.K then
 		toggleMenuVisuals()
