@@ -20,8 +20,6 @@ local config = {
 
 	WS = 16,
 	JP = 50,
-	FlyEnabled = false,
-	FlySpeed = 50,
 
 	ESPTransparency = 0.5,
 	NPCHitboxEnabled = false,
@@ -213,7 +211,6 @@ local transBtn = addBtn("ESPTransparency: 0.5")
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
-local flyBtn = addBtn("Fly: OFF")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
 
@@ -406,6 +403,11 @@ local function handlePlayerHitbox(char, playerObj)
 end
 
 local function handleNPCHitbox(char)
+	-- Don't apply hitbox to the player's own character
+	if char == LocalPlayer.Character then
+		return
+	end
+
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
 		restoreAllCandidateParts(char, originalNPCSizes)
@@ -497,139 +499,23 @@ task.spawn(function()
 			end
 		end
 
-local char = LocalPlayer.Character
+		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-		if hum and not config.FlyEnabled then
+		if hum then
 			if hum.WalkSpeed ~= config.WS then
 				hum.WalkSpeed = config.WS
 			end
 			if hum.JumpPower ~= config.JP then
 				hum.JumpPower = config.JP
 			end
+			-- Only AutoJump if the feature is enabled
 			if config.AutoJump and hum.MoveDirection.Magnitude > 0 then
 				hum.Jump = true
 			end
 		end
 
 		task.wait(0.15)
-	end
-end)
-
-local flyRenderConn
-local flyBodyGyro, flyBodyVelocity
-local lastDirection = Vector3.new(0, 0, 0)
-
-local function stopFlying(char)
-	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
-	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
-	if flyRenderConn then flyRenderConn:Disconnect(); flyRenderConn = nil end
-	lastDirection = Vector3.new(0, 0, 0) -- Reset direction cache
-	
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		hum.PlatformStand = false
-		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-	end
-end
-
-local function startFlying(char)
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root then return end
-	
-	stopFlying(char)
-	task.wait(0.05)
-	hum.PlatformStand = true
-	
-	flyBodyGyro = Instance.new("BodyGyro")
-	flyBodyGyro.P = 9e4
-	flyBodyGyro.maxTorque = Vector3.new(9e5, 9e5, 9e5)
-	flyBodyGyro.cframe = root.CFrame
-	flyBodyGyro.Parent = root
-	
-	flyBodyVelocity = Instance.new("BodyVelocity")
-	flyBodyVelocity.velocity = Vector3.new(0, 0, 0)
-	flyBodyVelocity.maxForce = Vector3.new(9e5, 9e5, 9e5)
-	flyBodyVelocity.Parent = root
-	
-	local camera = workspace.CurrentCamera
-	
-	-- Fetch the player module once for mobile joystick tracking
-	local playerScripts = LocalPlayer:WaitForChild("PlayerScripts")
-	local playerModule = playerScripts:FindFirstChild("PlayerModule")
-	local controls = playerModule and require(playerModule):GetControls()
-	
-	flyRenderConn = RunService.RenderStepped:Connect(function()
-		if not char.Parent or not hum or hum.Health <= 0 or not config.FlyEnabled then
-			stopFlying(char)
-			return
-		end
-		
-		flyBodyGyro.cframe = camera.CFrame
-		local currentInputDirection = Vector3.new(0, 0, 0)
-		
-		-- 1. PC Directional Keys input check
-		if UserInputService:IsKeyDown(Enum.KeyCode.W) then currentInputDirection += camera.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.S) then currentInputDirection -= camera.CFrame.LookVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.A) then currentInputDirection -= camera.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.D) then currentInputDirection += camera.CFrame.RightVector end
-		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then currentInputDirection += Vector3.new(0, 1, 0) end
-		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then currentInputDirection -= Vector3.new(0, 1, 0) end
-		
-		-- 2. Mobile Joystick input check
-		if controls then
-			local moveVector = controls:GetMoveVector()
-			if moveVector.Magnitude > 0 then
-				local camLook = camera.CFrame.LookVector
-				local camRight = camera.CFrame.RightVector
-				currentInputDirection += (camLook * -moveVector.Z) + (camRight * moveVector.X)
-			end
-		end
-		
-		-- If there is active user input (tap/press), update the persistent flight path
-		if currentInputDirection.Magnitude > 0 then
-			lastDirection = currentInputDirection.Unit
-		end
-		
-		-- Continually applies velocity using the saved direction without requiring a hold action
-		if config.FlyEnabled and lastDirection.Magnitude > 0 then
-			-- Dynamic lock: Updates flight vector to follow camera adjustments even when letting go of controls
-			if currentInputDirection.Magnitude == 0 then
-				flyBodyVelocity.velocity = camera.CFrame.LookVector * config.FlySpeed
-			else
-				flyBodyVelocity.velocity = lastDirection * config.FlySpeed
-			end
-		else
-			flyBodyVelocity.velocity = Vector3.new(0, 0.05, 0)
-		end
-	end)
-end
-
-local function updateFlyButtonText()
-	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
-end
-
-local function toggleFlightState()
-	config.FlyEnabled = not config.FlyEnabled
-	updateFlyButtonText()
-	if config.FlyEnabled then
-		startFlying(LocalPlayer.Character)
-	else
-		stopFlying(LocalPlayer.Character)
-	end
-end
-
--- Mobile UI Connection: Toggling the button automatically starts/stops flight
-flyBtn.MouseButton1Click:Connect(function()
-	toggleFlightState()
-end)
-
--- Keyboard Hook Observers (PC Only Toggle Key)
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.KeyCode == Enum.KeyCode.E then
-		toggleFlightState()
 	end
 end)
 
@@ -750,7 +636,7 @@ transBtn.MouseButton1Click:Connect(function()
 end)
 
 wsBtn.MouseButton1Click:Connect(function()
-	config.WS = (config.WS >= 100) and 16 or (config.WS + 10)
+	config.WS = (config.WS >= 100) and 16 or (config.WS + 1)
 	wsBtn.Text = "WS: " .. config.WS
 end)
 
@@ -771,18 +657,6 @@ autoJumpBtn.MouseButton1Click:Connect(function()
 	autoJumpBtn.Text = "Mobile AutoJump: " .. (config.AutoJump and "ON" or "OFF")
 end)
 
-flyBtn.MouseButton1Click:Connect(function()
-	config.FlyEnabled = not config.FlyEnabled
-	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
-	if config.FlyEnabled then
-		config.DoubleJumpEnabled = false
-		doubleJumpBtn.Text = "Double Jump: OFF"
-		config.InfJumpEnabled = false
-		infJumpBtn.Text = "Infinite Jump: OFF"
-	else
-	end
-end)
-
 resetBtn.MouseButton1Click:Connect(function()
 	config.WS = 16
 	config.JP = 50
@@ -795,7 +669,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxTransparency = 0.5
 	config.AutoJump = false
 	config.GlobalHitboxToggle = true
-    config.FlyEnabled = false
 
 	wsBtn.Text = "WS: 16"
 	jpBtn.Text = "JP: 50"
@@ -808,8 +681,17 @@ resetBtn.MouseButton1Click:Connect(function()
 	npcTransBtn.Text = "NPC Transparency: 0.5"
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
-    flyBtn.Text = "Fly: OFF"
 
 	refreshAllPlayers()
 	refreshAllNPCs()
+end)
+
+-- Toggle L key to toggle Global Hitbox
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
+		config.GlobalHitboxToggle = not config.GlobalHitboxToggle
+		globalHitboxBtn.Text = "Toggle Hitboxes: " .. (config.GlobalHitboxToggle and "ON" or "OFF")
+		refreshAllPlayers()
+		refreshAllNPCs()
+	end
 end)
