@@ -20,6 +20,7 @@ local config = {
 
 	WS = 16,
 	JP = 50,
+	BypassWalkspeedJump = true,
 
 	ESPTransparency = 0.5,
 	NPCHitboxEnabled = false,
@@ -211,6 +212,7 @@ local transBtn = addBtn("ESPTransparency: 0.5")
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
+local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
 
@@ -502,7 +504,7 @@ task.spawn(function()
 		local char = LocalPlayer.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 
-		if hum then
+		if hum and config.BypassWalkspeedJump then
 			if hum.WalkSpeed ~= config.WS then
 				hum.WalkSpeed = config.WS
 			end
@@ -522,6 +524,14 @@ end)
 local menuMoving = false
 local originalSize = mainFrame.Size
 
+local function updateMouseLock()
+	if mainFrame.Visible then
+		LocalPlayer:GetMouse().TargetFilter = nil
+	else
+		LocalPlayer:GetMouse().TargetFilter = screenGui
+	end
+end
+
 local function toggleMenuVisuals()
 	if menuMoving then return end
 	menuMoving = true
@@ -537,6 +547,7 @@ local function toggleMenuVisuals()
 		closeTween:Play()
 		closeTween.Completed:Connect(function()
 			mainFrame.Visible = false
+			updateMouseLock()
 			menuMoving = false
 		end)
 	else
@@ -546,6 +557,7 @@ local function toggleMenuVisuals()
 		mainHeaderTitle.BackgroundTransparency = 1
 		headerFlattener.BackgroundTransparency = 1
 		mainFrame.Visible = true
+		updateMouseLock()
 
 		local openTween = TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
 			Size = originalSize,
@@ -657,6 +669,11 @@ autoJumpBtn.MouseButton1Click:Connect(function()
 	autoJumpBtn.Text = "Mobile AutoJump: " .. (config.AutoJump and "ON" or "OFF")
 end)
 
+bypassBtn.MouseButton1Click:Connect(function()
+	config.BypassWalkspeedJump = not config.BypassWalkspeedJump
+	bypassBtn.Text = "Toggle Bypass WS/JP: " .. (config.BypassWalkspeedJump and "ON" or "OFF")
+end)
+
 resetBtn.MouseButton1Click:Connect(function()
 	config.WS = 16
 	config.JP = 50
@@ -669,6 +686,7 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxTransparency = 0.5
 	config.AutoJump = false
 	config.GlobalHitboxToggle = true
+	config.BypassWalkspeedJump = true
 
 	wsBtn.Text = "WS: 16"
 	jpBtn.Text = "JP: 50"
@@ -681,6 +699,7 @@ resetBtn.MouseButton1Click:Connect(function()
 	npcTransBtn.Text = "NPC Transparency: 0.5"
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
+	bypassBtn.Text = "Toggle Bypass WS/JP: ON"
 
 	refreshAllPlayers()
 	refreshAllNPCs()
