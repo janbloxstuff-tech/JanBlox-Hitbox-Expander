@@ -16,8 +16,6 @@ local config = {
 
 	WS = 16,
 	JP = 50,
-    DoubleJumpEnabled = false,
-	InfJumpEnabled = false,
 	FlyEnabled = false,
 	FlySpeed = 50,
 
@@ -212,8 +210,6 @@ addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
 local flyBtn = addBtn("Fly: OFF")
-local doubleJumpBtn = addBtn("Double Jump: OFF")
-local infJumpBtn = addBtn("Infinite Jump: OFF")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
 
@@ -516,34 +512,12 @@ task.spawn(function()
 end)
 
 local flyRenderConn
-local hasDoubleJumped = false
 local flyBodyGyro, flyBodyVelocity
-
--- Modern Mobile Flight GUI Module Components
-local mobileFlyGui = Instance.new("ScreenGui")
-mobileFlyGui.Name = "MobileFlyGui"
-mobileFlyGui.ResetOnSpawn = false
-mobileFlyGui.DisplayOrder = 1000000
-
-local mobileFlyBtn = Instance.new("TextButton", mobileFlyGui)
-mobileFlyBtn.Size = UDim2.new(0, 70, 0, 70)
-mobileFlyBtn.Position = UDim2.new(0.8, 0, 0.45, 0) -- Conveniently placed above the native jump button
-mobileFlyBtn.BackgroundColor3 = Color3.fromRGB(240, 50, 50)
-mobileFlyBtn.TextColor3 = Color3.new(1, 1, 1)
-mobileFlyBtn.Font = Enum.Font.SourceSansBold
-mobileFlyBtn.TextSize = 16
-mobileFlyBtn.Text = "STOP\nFLY"
-mobileFlyBtn.Visible = false
-mobileFlyGui.Parent = PlayerGui
-
-local mobileCorner = Instance.new("UICorner", mobileFlyBtn)
-mobileCorner.CornerRadius = UDim.new(0, 35) -- Make it perfectly round
 
 local function stopFlying(char)
 	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
 	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
 	if flyRenderConn then flyRenderConn:Disconnect(); flyRenderConn = nil end
-	mobileFlyBtn.Visible = false
 	
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
@@ -560,11 +534,6 @@ local function startFlying(char)
 	stopFlying(char)
 	task.wait(0.05)
 	hum.PlatformStand = true
-	
-	-- Display Mobile Fly Control Interface overlay if they are on a touch device
-	if UserInputService.TouchEnabled then
-		mobileFlyBtn.Visible = true
-	end
 	
 	flyBodyGyro = Instance.new("BodyGyro")
 	flyBodyGyro.P = 9e4
@@ -596,18 +565,16 @@ local function startFlying(char)
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
 		
-		-- 2. Mobile Joystick & Screen Tap Flight Control Engine
-		if hum.MoveDirection.Magnitude > 0 or (UserInputService.TouchEnabled and UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)) then
+		-- 2. Mobile Joystick (Go exactly where looking)
+		if hum.MoveDirection.Magnitude > 0 then
 			local camLook = camera.CFrame.LookVector
 			local camRight = camera.CFrame.RightVector
 			
-			if hum.MoveDirection.Magnitude > 0 then
-				direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
-			else
-				direction += camLook -- Tap anywhere to fly straight forward where screen points
-			end
+			-- Uses full 3D pitch lookup (W/S mapped directly to Looking vector including up/down)
+			direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
 		end
 		
+		-- Apply forces strictly if fly remains enabled
 		if config.FlyEnabled and direction.Magnitude > 0 then
 			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
 		else
@@ -624,57 +591,17 @@ local function toggleFlightState()
 	config.FlyEnabled = not config.FlyEnabled
 	updateFlyButtonText()
 	if config.FlyEnabled then
-		config.DoubleJumpEnabled = false
-		doubleJumpBtn.Text = "Double Jump: OFF"
-		config.InfJumpEnabled = false
-		infJumpBtn.Text = "Infinite Jump: OFF"
 		startFlying(LocalPlayer.Character)
 	else
 		stopFlying(LocalPlayer.Character)
 	end
 end
 
--- Connect the Mobile GUI Button to disable flight instantly upon press
-mobileFlyBtn.MouseButton1Click:Connect(function()
-	if config.FlyEnabled then
-		toggleFlightState()
-	end
-end)
-
--- Universal Jump Force Processor (Restored & Highly Responsive)
-local function handleJumpInput()
-	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root or config.FlyEnabled then return end
-	
-	if config.InfJumpEnabled then
-		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
-	elseif config.DoubleJumpEnabled then
-		local state = hum:GetState()
-		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped then
-			hasDoubleJumped = true
-			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
-		end
-	end
-end
-
--- Fixed Touch Interface Processor: Intercepts spacebars, mobile UI button touches, and gamepads instantly
+-- Keyboard Hook Observers
 UserInputService.InputBegan:Connect(function(input, processed)
-	-- Capture PC Spacebar or Native Mobile Jump Button inputs directly
-	if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA or input.UserInputType == Enum.UserInputType.Gamepad1 then
-		handleJumpInput()
-	elseif input.KeyCode == Enum.KeyCode.E then
+	if processed then return end
+	if input.KeyCode == Enum.KeyCode.E then
 		toggleFlightState()
-	end
-end)
-
--- Safe Mobile Fall/Landing State monitor framework
-RunService.Heartbeat:Connect(function()
-	local char = LocalPlayer.Character
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if hum and (hum:GetState() == Enum.HumanoidStateType.Landed or hum.FloorMaterial ~= Enum.Material.Air) then
-		hasDoubleJumped = false
 	end
 end)
 
@@ -816,28 +743,6 @@ autoJumpBtn.MouseButton1Click:Connect(function()
 	autoJumpBtn.Text = "Mobile AutoJump: " .. (config.AutoJump and "ON" or "OFF")
 end)
 
-doubleJumpBtn.MouseButton1Click:Connect(function()
-	config.DoubleJumpEnabled = not config.DoubleJumpEnabled
-	doubleJumpBtn.Text = "Double Jump: " .. (config.DoubleJumpEnabled and "ON" or "OFF")
-	if config.DoubleJumpEnabled then
-		config.InfJumpEnabled = false
-		infJumpBtn.Text = "Infinite Jump: OFF"
-		config.FlyEnabled = false
-		flyBtn.Text = "Fly: OFF"
-	end
-end)
-
-infJumpBtn.MouseButton1Click:Connect(function()
-	config.InfJumpEnabled = not config.InfJumpEnabled
-	infJumpBtn.Text = "Infinite Jump: " .. (config.InfJumpEnabled and "ON" or "OFF")
-	if config.InfJumpEnabled then
-		config.DoubleJumpEnabled = false
-		doubleJumpBtn.Text = "Double Jump: OFF"
-		config.FlyEnabled = false
-		flyBtn.Text = "Fly: OFF"
-	end
-end)
-
 flyBtn.MouseButton1Click:Connect(function()
 	config.FlyEnabled = not config.FlyEnabled
 	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
@@ -862,8 +767,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxTransparency = 0.5
 	config.AutoJump = false
 	config.GlobalHitboxToggle = true
-    config.DoubleJumpEnabled = false
-    config.InfJumpEnabled = false
     config.FlyEnabled = false
 
 	wsBtn.Text = "WS: 16"
@@ -877,8 +780,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	npcTransBtn.Text = "NPC Transparency: 0.5"
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
-    doubleJumpBtn.Text = "Double Jump: OFF"
-    infJumpBtn.Text = "Infinite Jump: OFF"
     flyBtn.Text = "Fly: OFF"
 
 	refreshAllPlayers()
