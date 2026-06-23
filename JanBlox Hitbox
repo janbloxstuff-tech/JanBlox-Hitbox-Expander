@@ -20,7 +20,8 @@ local config = {
     NPCHitboxSize = 5,
     NPCHitboxTransparency = 0.5
 }
-local originalSizes = {}
+local originalPlayerSizes = {}
+local originalNPCSizes = {}
 
 -- Setup UI
 local screenGui = Instance.new("ScreenGui")
@@ -32,11 +33,25 @@ screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 local mainFrame = Instance.new("Frame", screenGui)
 mainFrame.Size = UDim2.new(0, 260, 0, 420)
 mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-mainFrame.BackgroundTransparency = 1 
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
 
+-- Pinned Header Title (Outside of Scrolling Frame)
+local mainHeaderTitle = Instance.new("TextLabel", mainFrame)
+mainHeaderTitle.Size = UDim2.new(1, 0, 0, 35)
+mainHeaderTitle.Position = UDim2.new(0, 0, 0, 0)
+mainHeaderTitle.Text = "JanBlox Gui"
+mainHeaderTitle.TextColor3 = Color3.new(1, 1, 1)
+mainHeaderTitle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainHeaderTitle.Font = Enum.Font.SourceSansBold
+mainHeaderTitle.TextSize = 16
+mainHeaderTitle.BorderSizePixel = 0
+
+-- Scrolling Container (Shifted down to accommodate static header)
 local scrollFrame = Instance.new("ScrollingFrame", mainFrame)
-scrollFrame.Size = UDim2.new(1, 0, 1, 0)
-scrollFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+scrollFrame.Size = UDim2.new(1, 0, 1, -35)
+scrollFrame.Position = UDim2.new(0, 0, 0, 35)
+scrollFrame.BackgroundTransparency = 1
 scrollFrame.BorderSizePixel = 0
 scrollFrame.ScrollBarThickness = 6
 scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -93,9 +108,10 @@ local function makeDraggable(frame, handle)
     end)
 end
 
-makeDraggable(toggleBtn) -- Make OpenCloseButton independently draggable
+makeDraggable(toggleBtn) -- Toggle button draggable
+makeDraggable(mainFrame, mainHeaderTitle) -- Header drags the whole menu frame
 
--- Order Tracker to force top-to-bottom alignment
+-- Order Tracker to force top-to-bottom alignment inside ScrollFrame
 local layoutOrderCounter = 0
 
 local function addTitle(text)
@@ -130,42 +146,38 @@ end
 -- Assemble GUI Layout In Your Exact Order
 -- ==========================================
 
--- 1st Section (Main Header) - Only this header can drag the menu!
-local mainHeaderTitle = addTitle("JanBlox Gui")
-makeDraggable(mainFrame, mainHeaderTitle)
-
--- 2nd Section
+-- 1st Section
 addTitle("Hitbox Configuration")
 local hitBtn = addBtn("Hitbox: OFF")
 local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
 local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
 
--- 3rd Section (NPC Hitbox Section)
+-- 2nd Section (NPC Hitbox Section)
 addTitle("NPC Configuration")
 local npcHitBtn = addBtn("NPC Hitbox: OFF")
 local npcSwapBtn = addBtn("NPC Target: Head")
 local npcSizeBtn = addBtn("NPC Size: 5")
 local npcTransBtn = addBtn("NPC Transparency: 0.5")
 
--- 4th Section
+-- 3rd Section
 addTitle("ESP Configuration")
 local teamBtn = addBtn("Team Check: OFF")
 local espBtn = addBtn("ESP: OFF")
 local transBtn = addBtn("ESPTransparency: 0.5")
 
--- 5th Section
+-- 4th Section
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
 local resetBtn = addBtn("Reset")
 
 -- Character Handling Utilities
-local function restorePart(char, partName)
+local function restorePart(char, partName, storage)
     local part = char:FindFirstChild(partName)
-    if part and originalSizes[char.Name .. partName] then
-        part.Size = originalSizes[char.Name .. partName]
-        part.Transparency = originalSizes[char.Name .. partName .. "_Trans"] or 0
+    if part and storage[char] and storage[char][partName] then
+        part.Size = storage[char][partName].Size
+        part.Transparency = storage[char][partName].Transparency
         part.Massless = false
     end
 end
@@ -211,57 +223,81 @@ local function updateESP(char)
     end
 end
 
--- Process Dynamic Hitbox Adjustment for a Model
-local function handleHitboxProcessing(c, isNPC, playerObj)
-    local isEnabled = isNPC and config.NPCHitboxEnabled or config.HitboxEnabled
-    local targetPart = isNPC and config.NPCTargetPart or config.TargetPart
-    local hitboxSize = isNPC and config.NPCHitboxSize or config.HitboxSize
-    local hitboxTrans = isNPC and config.NPCHitboxTransparency or config.HitboxTransparency
-    
+-- Completely Isolated Player Hitbox Logic
+local function handlePlayerHitbox(c, playerObj)
+    local targetPart = config.TargetPart
     local target = c:FindFirstChild(targetPart)
     
-    -- Universal compatibility checks for Torsos
+    if not target and targetPart == "UpperTorso" then
+        target = c:FindFirstChild("Torso") or c:FindFirstChild("LowerTorso")
+    end
+    
+    local other = (targetPart == "Head") and "UpperTorso" or "Head"
+    local passesTeamCheck = not (config.TeamCheck and playerObj.Team == LocalPlayer.Team)
+    
+    if config.HitboxEnabled and passesTeamCheck and target then
+        if not originalPlayerSizes[c] then originalPlayerSizes[c] = {} end
+        if not originalPlayerSizes[c][target.Name] then
+            originalPlayerSizes[c][target.Name] = {Size = target.Size, Transparency = target.Transparency}
+        end
+        
+        restorePart(c, other, originalPlayerSizes)
+        restorePart(c, "Torso", originalPlayerSizes)
+        restorePart(c, "LowerTorso", originalPlayerSizes)
+        
+        target.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+        target.Transparency = config.HitboxTransparency
+        target.Massless = true
+        target.CanCollide = false
+    else
+        restorePart(c, "Head", originalPlayerSizes)
+        restorePart(c, "UpperTorso", originalPlayerSizes)
+        restorePart(c, "Torso", originalPlayerSizes)
+        restorePart(c, "LowerTorso", originalPlayerSizes)
+    end
+end
+
+-- Completely Isolated NPC Hitbox Logic
+local function handleNPCHitbox(c)
+    local targetPart = config.NPCTargetPart
+    local target = c:FindFirstChild(targetPart)
+    
     if not target and targetPart == "UpperTorso" then
         target = c:FindFirstChild("Torso") or c:FindFirstChild("LowerTorso")
     end
     
     local other = (targetPart == "Head") and "UpperTorso" or "Head"
     
-    local passesTeamCheck = true
-    if not isNPC and playerObj and config.TeamCheck and playerObj.Team == LocalPlayer.Team then
-        passesTeamCheck = false
-    end
-    
-    if isEnabled and passesTeamCheck and target then
-        if not originalSizes[c.Name .. targetPart] then 
-            originalSizes[c.Name .. targetPart] = target.Size 
-            originalSizes[c.Name .. targetPart .. "_Trans"] = target.Transparency
+    if config.NPCHitboxEnabled and target then
+        if not originalNPCSizes[c] then originalNPCSizes[c] = {} end
+        if not originalNPCSizes[c][target.Name] then
+            originalNPCSizes[c][target.Name] = {Size = target.Size, Transparency = target.Transparency}
         end
-        restorePart(c, other)
-        restorePart(c, "Torso")
-        restorePart(c, "LowerTorso")
         
-        target.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-        target.Transparency = hitboxTrans
+        restorePart(c, other, originalNPCSizes)
+        restorePart(c, "Torso", originalNPCSizes)
+        restorePart(c, "LowerTorso", originalNPCSizes)
+        
+        target.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+        target.Transparency = config.NPCHitboxTransparency
         target.Massless = true
         target.CanCollide = false
     else
-        restorePart(c, "Head")
-        restorePart(c, "UpperTorso")
-        restorePart(c, "Torso")
-        restorePart(c, "LowerTorso")
+        restorePart(c, "Head", originalNPCSizes)
+        restorePart(c, "UpperTorso", originalNPCSizes)
+        restorePart(c, "Torso", originalNPCSizes)
+        restorePart(c, "LowerTorso", originalNPCSizes)
     end
 end
 
--- Deep Workspace Scanner to track NPCs anywhere inside Workspace
+-- Deep Workspace Scanner specifically checking paths for NPCs
 local function scanForNPCs(root)
     for _, obj in pairs(root:GetChildren()) do
         if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
             if not Players:GetPlayerFromCharacter(obj) and obj ~= LocalPlayer.Character then
-                handleHitboxProcessing(obj, true, nil)
+                handleNPCHitbox(obj)
             end
         elseif obj:IsA("Folder") or obj:IsA("Model") then
-            -- Recursively search deep into interior game folders/folders where NPCs usually hide
             scanForNPCs(obj)
         end
     end
@@ -273,10 +309,10 @@ RunService.RenderStepped:Connect(function()
     for _, p in pairs(Players:GetPlayers()) do
         if p == LocalPlayer or not p.Character then continue end
         updateESP(p.Character)
-        handleHitboxProcessing(p.Character, false, p)
+        handlePlayerHitbox(p.Character, p)
     end
     
-    -- Track NPCs comprehensively across workspace branches
+    -- Track NPCs
     scanForNPCs(workspace)
     
     -- Local Player Modifications
@@ -307,7 +343,6 @@ swapBtn.MouseButton1Click:Connect(function()
 end)
 
 sizeBtn.MouseButton1Click:Connect(function()
-    -- Cap out exactly at 70
     config.HitboxSize = (config.HitboxSize >= 70) and 5 or (config.HitboxSize + 5)
     sizeBtn.Text = "Size: " .. config.HitboxSize
 end)
@@ -329,7 +364,6 @@ npcSwapBtn.MouseButton1Click:Connect(function()
 end)
 
 npcSizeBtn.MouseButton1Click:Connect(function()
-    -- Cap out exactly at 70
     config.NPCHitboxSize = (config.NPCHitboxSize >= 70) and 5 or (config.NPCHitboxSize + 5)
     npcSizeBtn.Text = "NPC Size: " .. config.NPCHitboxSize
 end)
