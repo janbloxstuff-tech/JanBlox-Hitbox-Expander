@@ -13,10 +13,15 @@ local config = {
 	TargetPart = "Head",
 	HitboxSize = 5,
 	HitboxTransparency = 0.5,
+
 	WS = 16,
 	JP = 50,
-	ESPTransparency = 0.5,
+    DoubleJumpEnabled = false,
+	InfJumpEnabled = false,
+	FlyEnabled = false,
+	FlySpeed = 50,
 
+	ESPTransparency = 0.5,
 	NPCHitboxEnabled = false,
 	NPCTargetPart = "Head",
 	NPCHitboxSize = 5,
@@ -206,6 +211,9 @@ local transBtn = addBtn("ESPTransparency: 0.5")
 addTitle("Player Configuration")
 local wsBtn = addBtn("WS: 16")
 local jpBtn = addBtn("JP: 50")
+local flyBtn = addBtn("Fly: OFF")
+local doubleJumpBtn = addBtn("Double Jump: OFF")
+local infJumpBtn = addBtn("Infinite Jump: OFF")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
 
@@ -507,7 +515,77 @@ task.spawn(function()
 	end
 end)
 
-local menuMoving = false -- Fixed: lowercase 'local'
+local doubleJumpConn, infJumpConn, flyRenderConn
+local hasDoubleJumped = false
+local flyBodyGyro, flyBodyVelocity
+
+local function stopFlying(char)
+	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
+	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
+	if flyRenderConn then flyRenderConn:Disconnect(); flyRenderConn = nil end
+	
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.PlatformStand = false
+		hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+	end
+end
+
+local function startFlying(char)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not root then return end
+	
+	stopFlying(char)
+	hum.PlatformStand = true
+	
+	flyBodyGyro = Instance.new("BodyGyro")
+	flyBodyGyro.P = 9e4
+	flyBodyGyro.maxTorque = Vector3.new(9e5, 9e5, 9e5)
+	flyBodyGyro.cframe = root.CFrame
+	flyBodyGyro.Parent = root
+	
+	flyBodyVelocity = Instance.new("BodyVelocity")
+	flyBodyVelocity.velocity = Vector3.new(0, 0, 0)
+	flyBodyVelocity.maxForce = Vector3.new(9e5, 9e5, 9e5)
+	flyBodyVelocity.Parent = root
+	
+	local camera = workspace.CurrentCamera
+	
+	flyRenderConn = RunService.RenderStepped:Connect(function()
+		if not char.Parent or not hum or hum.Health <= 0 then
+			stopFlying(char)
+			return
+		end
+		
+		flyBodyGyro.cframe = camera.CFrame
+		
+		local direction = Vector3.new(0, 0, 0)
+		
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= camera.CFrame.LookVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction -= camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.D) then direction += camera.CFrame.RightVector end
+		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
+		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
+		
+		if hum.MoveDirection.Magnitude > 0 then
+			local camLook = camera.CFrame.LookVector
+			local camRight = camera.CFrame.RightVector
+			
+			local moveVector = hum.MoveDirection
+			direction += (camLook * moveVector.Z) + (camRight * moveVector.X)
+		end
+		
+		if direction.Magnitude > 0 then
+			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
+		else
+			flyBodyVelocity.velocity = Vector3.new(0, 0, 0)
+		end
+	end)
+end
+
+local menuMoving = false
 local originalSize = mainFrame.Size
 
 local function toggleMenuVisuals()
@@ -549,10 +627,8 @@ local function toggleMenuVisuals()
 	end
 end
 
--- Hook up the button click (Only needed once!)
 toggleBtn.MouseButton1Click:Connect(toggleMenuVisuals)
 
--- PC Keybind support
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.K then
 		toggleMenuVisuals()
@@ -647,6 +723,40 @@ autoJumpBtn.MouseButton1Click:Connect(function()
 	autoJumpBtn.Text = "Mobile AutoJump: " .. (config.AutoJump and "ON" or "OFF")
 end)
 
+doubleJumpBtn.MouseButton1Click:Connect(function()
+	config.DoubleJumpEnabled = not config.DoubleJumpEnabled
+	doubleJumpBtn.Text = "Double Jump: " .. (config.DoubleJumpEnabled and "ON" or "OFF")
+	if config.DoubleJumpEnabled then
+		config.InfJumpEnabled = false
+		infJumpBtn.Text = "Infinite Jump: OFF"
+		config.FlyEnabled = false
+		flyBtn.Text = "Fly: OFF"
+	end
+end)
+
+infJumpBtn.MouseButton1Click:Connect(function()
+	config.InfJumpEnabled = not config.InfJumpEnabled
+	infJumpBtn.Text = "Infinite Jump: " .. (config.InfJumpEnabled and "ON" or "OFF")
+	if config.InfJumpEnabled then
+		config.DoubleJumpEnabled = false
+		doubleJumpBtn.Text = "Double Jump: OFF"
+		config.FlyEnabled = false
+		flyBtn.Text = "Fly: OFF"
+	end
+end)
+
+flyBtn.MouseButton1Click:Connect(function()
+	config.FlyEnabled = not config.FlyEnabled
+	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
+	if config.FlyEnabled then
+		config.DoubleJumpEnabled = false
+		doubleJumpBtn.Text = "Double Jump: OFF"
+		config.InfJumpEnabled = false
+		infJumpBtn.Text = "Infinite Jump: OFF"
+	else
+	end
+end)
+
 resetBtn.MouseButton1Click:Connect(function()
 	config.WS = 16
 	config.JP = 50
@@ -659,6 +769,9 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxTransparency = 0.5
 	config.AutoJump = false
 	config.GlobalHitboxToggle = true
+    config.DoubleJumpEnabled = false
+    config.InfJumpEnabled = false
+    config.FlyEnabled = false
 
 	wsBtn.Text = "WS: 16"
 	jpBtn.Text = "JP: 50"
@@ -671,6 +784,9 @@ resetBtn.MouseButton1Click:Connect(function()
 	npcTransBtn.Text = "NPC Transparency: 0.5"
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
+    doubleJumpBtn.Text = "Double Jump: OFF"
+    infJumpBtn.Text = "Infinite Jump: OFF"
+    flyBtn.Text = "Fly: OFF"
 
 	refreshAllPlayers()
 	refreshAllNPCs()
