@@ -9,7 +9,7 @@ local config = {
     ESPEnabled = false,
     TargetPart = "Head", 
     HitboxSize = 5, 
-    HitboxTransparency = 0.5, -- New feature
+    HitboxTransparency = 0.5,
     WS = 16, 
     JP = 50,
     ESPTransparency = 0.5,
@@ -28,11 +28,11 @@ screenGui.Name = "JanBloxGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Menu Frame (Acts as a draggable wrapper)
+-- Main Menu Frame
 local mainFrame = Instance.new("Frame", screenGui)
 mainFrame.Size = UDim2.new(0, 260, 0, 420)
 mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
-mainFrame.BackgroundTransparency = 1 -- Transparent container for scrolling
+mainFrame.BackgroundTransparency = 1 
 
 local scrollFrame = Instance.new("ScrollingFrame", mainFrame)
 scrollFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -60,7 +60,7 @@ toggleBtn.TextSize = 14
 toggleBtn.Text = "Toggle Menu"
 toggleBtn.BorderSizePixel = 1
 
--- Simple UI Dragger Function Utility
+-- Optimized Dragging Utility
 local function makeDraggable(frame, handle)
     handle = handle or frame
     local dragging, dragInput, dragStart, startPos
@@ -93,8 +93,7 @@ local function makeDraggable(frame, handle)
     end)
 end
 
-makeDraggable(mainFrame, scrollFrame)
-makeDraggable(toggleBtn)
+makeDraggable(toggleBtn) -- Make OpenCloseButton independently draggable
 
 -- Order Tracker to force top-to-bottom alignment
 local layoutOrderCounter = 0
@@ -131,8 +130,9 @@ end
 -- Assemble GUI Layout In Your Exact Order
 -- ==========================================
 
--- 1st Section (Main Header)
-addTitle("JanBlox Gui")
+-- 1st Section (Main Header) - Only this header can drag the menu!
+local mainHeaderTitle = addTitle("JanBlox Gui")
+makeDraggable(mainFrame, mainHeaderTitle)
 
 -- 2nd Section
 addTitle("Hitbox Configuration")
@@ -141,7 +141,7 @@ local swapBtn = addBtn("Target: Head")
 local sizeBtn = addBtn("Size: 5")
 local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
 
--- 3rd Section (NPC Hitbox Clone Section)
+-- 3rd Section (NPC Hitbox Section)
 addTitle("NPC Configuration")
 local npcHitBtn = addBtn("NPC Hitbox: OFF")
 local npcSwapBtn = addBtn("NPC Target: Head")
@@ -173,7 +173,6 @@ end
 local function updateESP(char)
     local head = char:FindFirstChild("Head")
     if config.ESPEnabled and head then
-        -- Chams / Highlight management
         local hl = char:FindFirstChild("JanHighlight")
         if not hl then 
             hl = Instance.new("Highlight")
@@ -183,7 +182,6 @@ local function updateESP(char)
         hl.FillTransparency = config.ESPTransparency
         hl.OutlineTransparency = config.ESPTransparency
         
-        -- Screen-spaced Billboard placement
         local bill = head:FindFirstChild("ESP_UI")
         if not bill then
             bill = Instance.new("BillboardGui")
@@ -221,6 +219,12 @@ local function handleHitboxProcessing(c, isNPC, playerObj)
     local hitboxTrans = isNPC and config.NPCHitboxTransparency or config.HitboxTransparency
     
     local target = c:FindFirstChild(targetPart)
+    
+    -- Universal compatibility checks for Torsos
+    if not target and targetPart == "UpperTorso" then
+        target = c:FindFirstChild("Torso") or c:FindFirstChild("LowerTorso")
+    end
+    
     local other = (targetPart == "Head") and "UpperTorso" or "Head"
     
     local passesTeamCheck = true
@@ -234,6 +238,8 @@ local function handleHitboxProcessing(c, isNPC, playerObj)
             originalSizes[c.Name .. targetPart .. "_Trans"] = target.Transparency
         end
         restorePart(c, other)
+        restorePart(c, "Torso")
+        restorePart(c, "LowerTorso")
         
         target.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
         target.Transparency = hitboxTrans
@@ -242,6 +248,22 @@ local function handleHitboxProcessing(c, isNPC, playerObj)
     else
         restorePart(c, "Head")
         restorePart(c, "UpperTorso")
+        restorePart(c, "Torso")
+        restorePart(c, "LowerTorso")
+    end
+end
+
+-- Deep Workspace Scanner to track NPCs anywhere inside Workspace
+local function scanForNPCs(root)
+    for _, obj in pairs(root:GetChildren()) do
+        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") then
+            if not Players:GetPlayerFromCharacter(obj) and obj ~= LocalPlayer.Character then
+                handleHitboxProcessing(obj, true, nil)
+            end
+        elseif obj:IsA("Folder") or obj:IsA("Model") then
+            -- Recursively search deep into interior game folders/folders where NPCs usually hide
+            scanForNPCs(obj)
+        end
     end
 end
 
@@ -254,12 +276,8 @@ RunService.RenderStepped:Connect(function()
         handleHitboxProcessing(p.Character, false, p)
     end
     
-    -- Track NPCs (Models inside Workspace that aren't players)
-    for _, obj in pairs(workspace:GetChildren()) do
-        if obj:IsA("Model") and obj:FindFirstChild("Humanoid") and not Players:GetPlayerFromCharacter(obj) then
-            handleHitboxProcessing(obj, true, nil)
-        end
-    end
+    -- Track NPCs comprehensively across workspace branches
+    scanForNPCs(workspace)
     
     -- Local Player Modifications
     if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -289,7 +307,8 @@ swapBtn.MouseButton1Click:Connect(function()
 end)
 
 sizeBtn.MouseButton1Click:Connect(function()
-    config.HitboxSize = (config.HitboxSize >= 25) and 5 or (config.HitboxSize + 5)
+    -- Cap out exactly at 70
+    config.HitboxSize = (config.HitboxSize >= 70) and 5 or (config.HitboxSize + 5)
     sizeBtn.Text = "Size: " .. config.HitboxSize
 end)
 
@@ -310,7 +329,8 @@ npcSwapBtn.MouseButton1Click:Connect(function()
 end)
 
 npcSizeBtn.MouseButton1Click:Connect(function()
-    config.NPCHitboxSize = (config.NPCHitboxSize >= 25) and 5 or (config.NPCHitboxSize + 5)
+    -- Cap out exactly at 70
+    config.NPCHitboxSize = (config.NPCHitboxSize >= 70) and 5 or (config.NPCHitboxSize + 5)
     npcSizeBtn.Text = "NPC Size: " .. config.NPCHitboxSize
 end)
 
