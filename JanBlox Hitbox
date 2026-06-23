@@ -515,11 +515,11 @@ task.spawn(function()
 	end
 end)
 
-local doubleJumpConn, infJumpConn, flyRenderConn
+local flyRenderConn
 local hasDoubleJumped = false
 local flyBodyGyro, flyBodyVelocity
+local lastJumpTap = 0
 
--- Clean up physics structures when disabling flight
 local function stopFlying(char)
 	if flyBodyGyro then flyBodyGyro:Destroy(); flyBodyGyro = nil end
 	if flyBodyVelocity then flyBodyVelocity:Destroy(); flyBodyVelocity = nil end
@@ -532,14 +532,13 @@ local function stopFlying(char)
 	end
 end
 
--- Flight Controller supporting R6, R15, PC, and Mobile
 local function startFlying(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart")
 	if not hum or not root then return end
 	
 	stopFlying(char)
-	task.wait(0.05) -- Brief delay for state stabilization
+	task.wait(0.05)
 	hum.PlatformStand = true
 	
 	flyBodyGyro = Instance.new("BodyGyro")
@@ -556,7 +555,7 @@ local function startFlying(char)
 	local camera = workspace.CurrentCamera
 	
 	flyRenderConn = RunService.RenderStepped:Connect(function()
-		if not char.Parent or not hum or hum.Health <= 0 then
+		if not char.Parent or not hum or hum.Health <= 0 or not config.FlyEnabled then
 			stopFlying(char)
 			return
 		end
@@ -564,7 +563,7 @@ local function startFlying(char)
 		flyBodyGyro.cframe = camera.CFrame
 		local direction = Vector3.new(0, 0, 0)
 		
-		-- 1. PC Controls
+		-- 1. PC Directional Keys
 		if UserInputService:IsKeyDown(Enum.KeyCode.W) then direction += camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.S) then direction -= camera.CFrame.LookVector end
 		if UserInputService:IsKeyDown(Enum.KeyCode.A) then direction -= camera.CFrame.RightVector end
@@ -572,52 +571,97 @@ local function startFlying(char)
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
 		
-		-- 2. Mobile Thumbstick Controls (Optimized for R6/R15 Orientation)
+		-- 2. Mobile Thumbstick Tracking Integration
 		if hum.MoveDirection.Magnitude > 0 then
 			local camLook = camera.CFrame.LookVector
 			local camRight = camera.CFrame.RightVector
-			
-			-- Multiplies looking directions by native mobile input movement coordinates
 			direction += (camLook * hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
 			
-			-- Auto-leveling logic for mobile devices when moving forward/backward
 			if direction.Y == 0 then
 				direction = Vector3.new(direction.X, camLook.Y * hum.MoveDirection.Z, direction.Z)
 			end
 		end
 		
-		-- Apply updated vector forces to assembly
+		-- Apply continuous modern velocity constraints
 		if direction.Magnitude > 0 then
 			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
 		else
-			flyBodyVelocity.velocity = Vector3.new(0, 0.05, 0) -- Tiny hover force to fight gravity drift
+			flyBodyVelocity.velocity = Vector3.new(0, 0.05, 0)
 		end
 	end)
 end
 
--- Native Spacebar/Jump Input Capture Engine
+local function updateFlyButtonText()
+	flyBtn.Text = "Fly: " .. (config.FlyEnabled and "ON" or "OFF")
+end
+
+local function toggleFlightState()
+	config.FlyEnabled = not config.FlyEnabled
+	updateFlyButtonText()
+	if config.FlyEnabled then
+		config.DoubleJumpEnabled = false
+		doubleJumpBtn.Text = "Double Jump: OFF"
+		config.InfJumpEnabled = false
+		infJumpBtn.Text = "Infinite Jump: OFF"
+		startFlying(LocalPlayer.Character)
+	else
+		stopFlying(LocalPlayer.Character)
+	end
+end
+
+-- Custom Activation Event Framework for cross-platform inputs
+local function handleJumpInput()
+	local char = LocalPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not root then return end
+	
+	-- Double tap jump button logic on mobile devices to toggle fly
+	local now = os.clock()
+	if now - lastJumpTap < 0.35 then
+		toggleFlightState()
+		lastJumpTap = 0
+		return
+	end
+	lastJumpTap = now
+
+	-- Unified Assembly Movement Handling (R6 & R15 Modern Mechanics)
+	if config.InfJumpEnabled then
+		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
+	elseif config.DoubleJumpEnabled and not config.FlyEnabled then
+		local state = hum:GetState()
+		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped then
+			hasDoubleJumped = true
+			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
+		end
+	end
+end
+
+-- Keyboard Hook Observers
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-	if input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.Touch then
-		local char = LocalPlayer.Character
-		local hum = char and char:FindFirstChildOfClass("Humanoid")
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if not hum or not root then return end
-		
-		-- R15 & R6 Modern Assembly Force Application
-		if config.InfJumpEnabled then
-			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
-		elseif config.DoubleJumpEnabled and not config.FlyEnabled then
-			local state = hum:GetState()
-			if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped then
-				hasDoubleJumped = true
-				root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
-			end
-		end
+	if input.KeyCode == Enum.KeyCode.Space then
+		handleJumpInput()
+	elseif input.KeyCode == Enum.KeyCode.E then
+		toggleFlightState()
 	end
 end)
 
--- Ground-Check Watcher for Resetting Double Jump State
+-- Mobile Touch Interface Hook Observers
+LocalPlayer.CharacterAdded:Connect(function(char)
+	local hum = char:WaitForChild("Humanoid")
+	hum.Jumping:Connect(function()
+		handleJumpInput()
+	end)
+end)
+
+if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+	LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Jumping:Connect(function()
+		handleJumpInput()
+	end)
+end
+
+-- Fall-State tracking framework
 RunService.Heartbeat:Connect(function()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
