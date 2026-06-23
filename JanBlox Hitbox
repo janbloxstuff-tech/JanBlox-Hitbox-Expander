@@ -548,6 +548,11 @@ local function startFlying(char)
 	
 	local camera = workspace.CurrentCamera
 	
+	-- Fetch the player module once for mobile joystick tracking
+	local playerScripts = LocalPlayer:WaitForChild("PlayerScripts")
+	local playerModule = playerScripts:FindFirstChild("PlayerModule")
+	local controls = playerModule and require(playerModule):GetControls()
+	
 	flyRenderConn = RunService.RenderStepped:Connect(function()
 		if not char.Parent or not hum or hum.Health <= 0 or not config.FlyEnabled then
 			stopFlying(char)
@@ -565,13 +570,16 @@ local function startFlying(char)
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
 		
-		-- 2. Mobile Joystick (Go exactly where looking)
-		if hum.MoveDirection.Magnitude > 0 then
-			local camLook = camera.CFrame.LookVector
-			local camRight = camera.CFrame.RightVector
-			
-			-- Uses full 3D pitch lookup (W/S mapped directly to Looking vector including up/down)
-			direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
+		-- 2. Mobile Joystick (Go exactly where looking - Bypass PlatformStand lock)
+		if controls then
+			local moveVector = controls:GetMoveVector()
+			if moveVector.Magnitude > 0 then
+				local camLook = camera.CFrame.LookVector
+				local camRight = camera.CFrame.RightVector
+				
+				-- Uses full 3D pitch lookup (Joystick mapped directly to camera angle including up/down)
+				direction += (camLook * -moveVector.Z) + (camRight * moveVector.X)
+			end
 		end
 		
 		-- Apply forces strictly if fly remains enabled
@@ -597,7 +605,12 @@ local function toggleFlightState()
 	end
 end
 
--- Keyboard Hook Observers
+-- Mobile UI Connection: Toggling the button automatically starts/stops flight
+flyBtn.MouseButton1Click:Connect(function()
+	toggleFlightState()
+end)
+
+-- Keyboard Hook Observers (PC Only Toggle Key)
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.E then
