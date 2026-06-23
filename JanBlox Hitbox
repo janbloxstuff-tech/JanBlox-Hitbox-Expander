@@ -514,7 +514,7 @@ task.spawn(function()
 		task.wait(0.15)
 	end
 end)
-
+	
 local flyRenderConn
 local hasDoubleJumped = false
 local flyBodyGyro, flyBodyVelocity
@@ -571,19 +571,19 @@ local function startFlying(char)
 		if UserInputService:IsKeyDown(Enum.KeyCode.Space) then direction += Vector3.new(0, 1, 0) end
 		if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then direction -= Vector3.new(0, 1, 0) end
 		
-		-- 2. Mobile Thumbstick Tracking Integration
+		-- 2. Mobile Thumbstick Tracking (FIXED: Subtracted Z to correct reverse movement)
 		if hum.MoveDirection.Magnitude > 0 then
 			local camLook = camera.CFrame.LookVector
 			local camRight = camera.CFrame.RightVector
-			direction += (camLook * hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
+			direction += (camLook * -hum.MoveDirection.Z) + (camRight * hum.MoveDirection.X)
 			
 			if direction.Y == 0 then
-				direction = Vector3.new(direction.X, camLook.Y * hum.MoveDirection.Z, direction.Z)
+				direction = Vector3.new(direction.X, camLook.Y * -hum.MoveDirection.Z, direction.Z)
 			end
 		end
 		
-		-- Apply continuous modern velocity constraints
-		if direction.Magnitude > 0 then
+		-- Apply forces strictly if fly remains enabled
+		if config.FlyEnabled and direction.Magnitude > 0 then
 			flyBodyVelocity.velocity = direction.Unit * config.FlySpeed
 		else
 			flyBodyVelocity.velocity = Vector3.new(0, 0.05, 0)
@@ -614,26 +614,34 @@ local function handleJumpInput()
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local root = char and char:FindFirstChild("HumanoidRootPart")
-	if not hum or not root then return end
+	if not hum or not root or config.FlyEnabled then return end
 	
-	-- Double tap jump button logic on mobile devices to toggle fly
-	local now = os.clock()
-	if now - lastJumpTap < 0.35 then
-		toggleFlightState()
-		lastJumpTap = 0
-		return
-	end
-	lastJumpTap = now
-
-	-- Unified Assembly Movement Handling (R6 & R15 Modern Mechanics)
+	-- Unified Assembly Movement Handling (Only executes if flight is totally OFF)
 	if config.InfJumpEnabled then
 		root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
-	elseif config.DoubleJumpEnabled and not config.FlyEnabled then
+	elseif config.DoubleJumpEnabled then
 		local state = hum:GetState()
 		if (state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping) and not hasDoubleJumped then
 			hasDoubleJumped = true
 			root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, config.JP, root.AssemblyLinearVelocity.Z)
 		end
+	end
+end
+
+-- Dedicated Double-Tap Engine for Mobile UI (Separated to protect jump configurations)
+local function handleMobileTapDetection()
+	local now = os.clock()
+	if now - lastJumpTap < 0.35 then
+		toggleFlightState()
+		lastJumpTap = 0
+	else
+		lastJumpTap = now
+		-- Execute normal jump modifications slightly delayed if a second tap doesn't immediately follow
+		task.defer(function()
+			if lastJumpTap == now then 
+				handleJumpInput()
+			end
+		end)
 	end
 end
 
@@ -648,17 +656,20 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 -- Mobile Touch Interface Hook Observers
+local function hookHumanoidJumping(hum)
+	hum.Jumping:Connect(function()
+		-- Diverts mobile actions into the double-tap processor instead of immediate force application
+		handleMobileTapDetection()
+	end)
+end
+
 LocalPlayer.CharacterAdded:Connect(function(char)
 	local hum = char:WaitForChild("Humanoid")
-	hum.Jumping:Connect(function()
-		handleJumpInput()
-	end)
+	hookHumanoidJumping(hum)
 end)
 
 if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-	LocalPlayer.Character:FindFirstChildOfClass("Humanoid").Jumping:Connect(function()
-		handleJumpInput()
-	end)
+	hookHumanoidJumping(LocalPlayer.Character:FindFirstChildOfClass("Humanoid"))
 end
 
 -- Fall-State tracking framework
