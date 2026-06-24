@@ -38,9 +38,10 @@ local originalNPCSizes = setmetatable({}, { __mode = "k" })
 local cachedNPCs = {}
 
 local candidateParts = {
-	"Head",
-	"HumanoidRootPart"
+	"Head"
 }
+
+local CUSTOM_ROOT_HITBOX_NAME = "HumanoidRootPartHitbox"
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "JanBloxGui"
@@ -244,6 +245,7 @@ local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
 local hitBtn = addBtn("Hitbox: OFF")
 local sizeBtn = addBtn("Size: 5")
 local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
+local swapHitboxBtn = addBtn("Swap Hitbox: Head")
 
 addTitle("NPC Configuration")
 local npcHitBtn = addBtn("NPC Hitbox: OFF")
@@ -261,6 +263,17 @@ local jpLabel, jpMinus, jpPlus = addStatControl("JP", 50)
 local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
 local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
 local resetBtn = addBtn("Reset")
+
+local function setPartPhysics(part)
+	if not part then
+		return
+	end
+
+	part.CanCollide = false
+	part.CanTouch = true
+	part.CanQuery = true
+	part.Massless = false
+end
 
 local function savePartState(char, part, storage)
 	if not storage[char] then
@@ -328,7 +341,6 @@ local function destroyESP(char)
 		end
 	end
 end
-
 local function updateESP(char, playerObj)
 	local hum = char:FindFirstChildOfClass("Humanoid")
 
@@ -402,44 +414,80 @@ local function updateESP(char, playerObj)
 	end
 end
 
-local function handlePlayerHitbox(char, playerObj)
+local function destroyCustomRootHitbox(char)
+	local custom = char:FindFirstChild(CUSTOM_ROOT_HITBOX_NAME)
+	if custom then
+		custom:Destroy()
+	end
+end
+
+local function createOrUpdateRootHitbox(char, size, transparency)
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return
+	end
+
+	local custom = char:FindFirstChild(CUSTOM_ROOT_HITBOX_NAME)
+	if not custom or not custom:IsA("BasePart") then
+		custom = Instance.new("Part")
+		custom.Name = CUSTOM_ROOT_HITBOX_NAME
+		custom.Anchored = false
+		custom.CanCollide = false
+		custom.CanTouch = true
+		custom.CanQuery = true
+		custom.Massless = false
+		custom.TopSurface = Enum.SurfaceType.Smooth
+		custom.BottomSurface = Enum.SurfaceType.Smooth
+		custom.Parent = char
+
+		local weld = Instance.new("WeldConstraint")
+		weld.Name = "RootHitboxWeld"
+		weld.Part0 = hrp
+		weld.Part1 = custom
+		weld.Parent = custom
+	end
+
+	custom.Size = Vector3.new(size, size, size)
+	custom.Transparency = transparency
+	custom.CFrame = hrp.CFrame
+	setPartPhysics(custom)
+	hrp.Massless = false
+end
+
+local function applyPlayerHitbox(char)
 	local alive = isAliveCharacter(char)
 
 	if not alive then
 		restoreAllCandidateParts(char, originalPlayerSizes)
+		destroyCustomRootHitbox(char)
 		destroyESP(char)
 		return
 	end
 
-	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
+	if config.GlobalHitboxToggle and config.HitboxEnabled then
 		pcall(function()
-			for _, partName in ipairs(candidateParts) do
-				local targetPart = char:FindFirstChild(partName)
+			if config.TargetPart == "Head" then
+				destroyCustomRootHitbox(char)
+
+				local targetPart = char:FindFirstChild("Head")
 				if targetPart then
 					savePartState(char, targetPart, originalPlayerSizes)
-					
-					-- Only expand Head size visually, keep HumanoidRootPart hidden
-					if partName == "Head" then
-						targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-						targetPart.Transparency = config.HitboxTransparency
-					elseif partName == "HumanoidRootPart" then
-						-- Expand hitbox but keep transparency at 1 to hide it
-						targetPart.Size = Vector3.new(config.HitboxSize * 1.2, config.HitboxSize * 1.2, config.HitboxSize * 1.2)
-						targetPart.Transparency = 1
-					end
-					
-					targetPart.CanCollide = false
-					targetPart.Massless = true
-					targetPart.CanTouch = true
+					targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+					targetPart.Transparency = config.HitboxTransparency
+					setPartPhysics(targetPart)
 				end
+			else
+				restorePart(char, "Head", originalPlayerSizes)
+				createOrUpdateRootHitbox(char, config.HitboxSize, config.HitboxTransparency)
 			end
 		end)
 	else
 		restoreAllCandidateParts(char, originalPlayerSizes)
+		destroyCustomRootHitbox(char)
 	end
 end
 
-local function handleNPCHitbox(char)
+local function applyNPCHitbox(char)
 	if char == LocalPlayer.Character then
 		return
 	end
@@ -447,32 +495,30 @@ local function handleNPCHitbox(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
 		restoreAllCandidateParts(char, originalNPCSizes)
+		destroyCustomRootHitbox(char)
 		return
 	end
 
 	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
 		pcall(function()
-			for _, partName in ipairs(candidateParts) do
-				local targetPart = char:FindFirstChild(partName)
+			if config.TargetPart == "Head" then
+				destroyCustomRootHitbox(char)
+
+				local targetPart = char:FindFirstChild("Head")
 				if targetPart then
 					savePartState(char, targetPart, originalNPCSizes)
-					
-					if partName == "Head" then
-						targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
-						targetPart.Transparency = config.NPCHitboxTransparency
-					elseif partName == "HumanoidRootPart" then
-						targetPart.Size = Vector3.new(config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2)
-						targetPart.Transparency = 1
-					end
-					
-					targetPart.CanCollide = false
-					targetPart.Massless = true
-					targetPart.CanTouch = true
+					targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+					targetPart.Transparency = config.NPCHitboxTransparency
+					setPartPhysics(targetPart)
 				end
+			else
+				restorePart(char, "Head", originalNPCSizes)
+				createOrUpdateRootHitbox(char, config.NPCHitboxSize, config.NPCHitboxTransparency)
 			end
 		end)
 	else
 		restoreAllCandidateParts(char, originalNPCSizes)
+		destroyCustomRootHitbox(char)
 	end
 end
 
@@ -495,7 +541,7 @@ local function refreshAllPlayers()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer and p.Character then
 			updateESP(p.Character, p)
-			handlePlayerHitbox(p.Character, p)
+			applyPlayerHitbox(p.Character)
 		end
 	end
 end
@@ -505,9 +551,13 @@ local function refreshAllNPCs()
 	for i = 1, #cachedNPCs do
 		local npc = cachedNPCs[i]
 		if npc and npc.Parent then
-			handleNPCHitbox(npc)
+			applyNPCHitbox(npc)
 		end
 	end
+end
+
+local function updateSwapHitboxButton()
+	swapHitboxBtn.Text = "Swap Hitbox: " .. (config.TargetPart == "Head" and "Head" or "HRP")
 end
 
 rejoinBtn.MouseButton1Click:Connect(function()
@@ -539,14 +589,14 @@ RunService.RenderStepped:Connect(function()
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p ~= LocalPlayer and p.Character then
 			updateESP(p.Character, p)
-			handlePlayerHitbox(p.Character, p)
+			applyPlayerHitbox(p.Character)
 		end
 	end
 
 	for i = #cachedNPCs, 1, -1 do
 		local npc = cachedNPCs[i]
 		if npc and npc.Parent then
-			handleNPCHitbox(npc)
+			applyNPCHitbox(npc)
 		else
 			table.remove(cachedNPCs, i)
 		end
@@ -630,7 +680,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
--- HITBOX BUTTON CONNECTIONS
 hitBtn.MouseButton1Click:Connect(function()
 	config.HitboxEnabled = not config.HitboxEnabled
 	hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF")
@@ -651,7 +700,18 @@ hitTransBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
--- NPC BUTTON CONNECTIONS
+swapHitboxBtn.MouseButton1Click:Connect(function()
+	if config.TargetPart == "Head" then
+		config.TargetPart = "HumanoidRootPart"
+	else
+		config.TargetPart = "Head"
+	end
+
+	updateSwapHitboxButton()
+	refreshAllPlayers()
+	refreshAllNPCs()
+end)
+
 npcHitBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxEnabled = not config.NPCHitboxEnabled
 	npcHitBtn.Text = "NPC Hitbox: " .. (config.NPCHitboxEnabled and "ON" or "OFF")
@@ -670,7 +730,6 @@ npcTransBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
--- ESP BUTTON CONNECTIONS
 teamBtn.MouseButton1Click:Connect(function()
 	config.TeamCheck = not config.TeamCheck
 	teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF")
@@ -689,7 +748,6 @@ transBtn.MouseButton1Click:Connect(function()
 	refreshAllPlayers()
 end)
 
--- PLAYER CONFIG BUTTON CONNECTIONS
 wsMinus.MouseButton1Click:Connect(function()
 	config.WS = math.max(0, config.WS - 1)
 	wsLabel.Text = "WS: " .. config.WS
@@ -736,7 +794,6 @@ bypassBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- RESET BUTTON
 resetBtn.MouseButton1Click:Connect(function()
 	config.WS = 16
 	config.JP = 50
@@ -753,6 +810,7 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.HitboxEnabled = false
 	config.TeamCheck = false
 	config.ESPEnabled = false
+	config.TargetPart = "Head"
 
 	wsLabel.Text = "WS: 16"
 	jpLabel.Text = "JP: 50"
@@ -769,6 +827,8 @@ resetBtn.MouseButton1Click:Connect(function()
 	teamBtn.Text = "Team Check: OFF"
 	espBtn.Text = "ESP: OFF"
 
+	updateSwapHitboxButton()
+
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then
@@ -780,7 +840,6 @@ resetBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
--- KEYBOARD SHORTCUTS
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
 		config.GlobalHitboxToggle = not config.GlobalHitboxToggle
@@ -789,3 +848,5 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		refreshAllNPCs()
 	end
 end)
+
+updateSwapHitboxButton()
