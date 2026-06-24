@@ -38,7 +38,8 @@ local originalNPCSizes = setmetatable({}, { __mode = "k" })
 local cachedNPCs = {}
 
 local candidateParts = {
-	"Head"
+	"Head",
+	"HumanoidRootPart"
 }
 
 local screenGui = Instance.new("ScreenGui")
@@ -48,7 +49,7 @@ screenGui.DisplayOrder = 999999
 screenGui.Parent = PlayerGui
 
 local mainFrame = Instance.new("Frame", screenGui)
-mainFrame.Size = UDim2.new(0, 260, 0, 450)
+mainFrame.Size = UDim2.new(0, 260, 0, 500)
 mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 mainFrame.BorderSizePixel = 0
@@ -333,7 +334,6 @@ local function updateESP(char, playerObj)
 
 	if not isAliveCharacter(char) then
 		destroyESP(char)
-		-- Restore default name view if the character is dead/invalid
 		if hum then
 			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 		end
@@ -411,17 +411,27 @@ local function handlePlayerHitbox(char, playerObj)
 		return
 	end
 
-	local targetPart = char:FindFirstChild("Head")
-
 	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
 		pcall(function()
-			if targetPart then
-				savePartState(char, targetPart, originalPlayerSizes)
-				targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
-				targetPart.Transparency = config.HitboxTransparency
-				targetPart.CanCollide = false
-				targetPart.Massless = true
-				targetPart.CanTouch = true
+			for _, partName in ipairs(candidateParts) do
+				local targetPart = char:FindFirstChild(partName)
+				if targetPart then
+					savePartState(char, targetPart, originalPlayerSizes)
+					
+					-- Only expand Head size visually, keep HumanoidRootPart hidden
+					if partName == "Head" then
+						targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+						targetPart.Transparency = config.HitboxTransparency
+					elseif partName == "HumanoidRootPart" then
+						-- Expand hitbox but keep transparency at 1 to hide it
+						targetPart.Size = Vector3.new(config.HitboxSize * 1.2, config.HitboxSize * 1.2, config.HitboxSize * 1.2)
+						targetPart.Transparency = 1
+					end
+					
+					targetPart.CanCollide = false
+					targetPart.Massless = true
+					targetPart.CanTouch = true
+				end
 			end
 		end)
 	else
@@ -440,17 +450,25 @@ local function handleNPCHitbox(char)
 		return
 	end
 
-	local targetPart = char:FindFirstChild("Head")
-
 	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
 		pcall(function()
-			if targetPart then
-				savePartState(char, targetPart, originalNPCSizes)
-				targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
-				targetPart.Transparency = config.NPCHitboxTransparency
-				targetPart.CanCollide = false
-				targetPart.Massless = true
-				targetPart.CanTouch = true
+			for _, partName in ipairs(candidateParts) do
+				local targetPart = char:FindFirstChild(partName)
+				if targetPart then
+					savePartState(char, targetPart, originalNPCSizes)
+					
+					if partName == "Head" then
+						targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+						targetPart.Transparency = config.NPCHitboxTransparency
+					elseif partName == "HumanoidRootPart" then
+						targetPart.Size = Vector3.new(config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2)
+						targetPart.Transparency = 1
+					end
+					
+					targetPart.CanCollide = false
+					targetPart.Massless = true
+					targetPart.CanTouch = true
+				end
 			end
 		end)
 	else
@@ -612,6 +630,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
+-- HITBOX BUTTON CONNECTIONS
 hitBtn.MouseButton1Click:Connect(function()
 	config.HitboxEnabled = not config.HitboxEnabled
 	hitBtn.Text = "Hitbox: " .. (config.HitboxEnabled and "ON" or "OFF")
@@ -622,14 +641,17 @@ sizeBtn.MouseButton1Click:Connect(function()
 	config.HitboxSize = (config.HitboxSize >= 70) and 5 or (config.HitboxSize + 5)
 	sizeBtn.Text = "Size: " .. config.HitboxSize
 	refreshAllPlayers()
+	refreshAllNPCs()
 end)
 
 hitTransBtn.MouseButton1Click:Connect(function()
 	config.HitboxTransparency = (config.HitboxTransparency >= 0.9) and 0 or tonumber(string.format("%.1f", config.HitboxTransparency + 0.2))
 	hitTransBtn.Text = "Hitbox Transparency: " .. tostring(config.HitboxTransparency)
 	refreshAllPlayers()
+	refreshAllNPCs()
 end)
 
+-- NPC BUTTON CONNECTIONS
 npcHitBtn.MouseButton1Click:Connect(function()
 	config.NPCHitboxEnabled = not config.NPCHitboxEnabled
 	npcHitBtn.Text = "NPC Hitbox: " .. (config.NPCHitboxEnabled and "ON" or "OFF")
@@ -648,6 +670,7 @@ npcTransBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
+-- ESP BUTTON CONNECTIONS
 teamBtn.MouseButton1Click:Connect(function()
 	config.TeamCheck = not config.TeamCheck
 	teamBtn.Text = "Team Check: " .. (config.TeamCheck and "ON" or "OFF")
@@ -666,6 +689,7 @@ transBtn.MouseButton1Click:Connect(function()
 	refreshAllPlayers()
 end)
 
+-- PLAYER CONFIG BUTTON CONNECTIONS
 wsMinus.MouseButton1Click:Connect(function()
 	config.WS = math.max(0, config.WS - 1)
 	wsLabel.Text = "WS: " .. config.WS
@@ -712,6 +736,7 @@ bypassBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
+-- RESET BUTTON
 resetBtn.MouseButton1Click:Connect(function()
 	config.WS = 16
 	config.JP = 50
@@ -725,6 +750,9 @@ resetBtn.MouseButton1Click:Connect(function()
 	config.AutoJump = false
 	config.GlobalHitboxToggle = true
 	config.BypassWalkspeedJump = true
+	config.HitboxEnabled = false
+	config.TeamCheck = false
+	config.ESPEnabled = false
 
 	wsLabel.Text = "WS: 16"
 	jpLabel.Text = "JP: 50"
@@ -737,6 +765,9 @@ resetBtn.MouseButton1Click:Connect(function()
 	autoJumpBtn.Text = "Mobile AutoJump: OFF"
 	globalHitboxBtn.Text = "Toggle Hitboxes: ON"
 	bypassBtn.Text = "Toggle Bypass WS/JP: ON"
+	hitBtn.Text = "Hitbox: OFF"
+	teamBtn.Text = "Team Check: OFF"
+	espBtn.Text = "ESP: OFF"
 
 	local char = LocalPlayer.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -749,6 +780,7 @@ resetBtn.MouseButton1Click:Connect(function()
 	refreshAllNPCs()
 end)
 
+-- KEYBOARD SHORTCUTS
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not gameProcessed and input.KeyCode == Enum.KeyCode.L then
 		config.GlobalHitboxToggle = not config.GlobalHitboxToggle
