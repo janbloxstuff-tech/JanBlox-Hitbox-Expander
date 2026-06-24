@@ -1,0 +1,511 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
+if not PlayerGui then
+	warn("PlayerGui failed to load - script stopping")
+	return
+end
+
+local config = {
+	HitboxEnabled = false,
+	TeamCheck = false,
+	ESPEnabled = false,
+	TargetPart = "Head",
+	HitboxSize = 5,
+	HitboxTransparency = 0.5,
+
+	WS = 16,
+	JP = 50,
+	BypassWalkspeedJump = true,
+
+	ESPTransparency = 0.5,
+	NPCHitboxEnabled = false,
+	NPCTargetPart = "Head",
+	NPCHitboxSize = 5,
+	NPCHitboxTransparency = 0.5,
+
+	AutoJump = false,
+	GlobalHitboxToggle = true
+}
+
+local originalPlayerSizes = setmetatable({}, { __mode = "k" })
+local originalNPCSizes = setmetatable({}, { __mode = "k" })
+local cachedNPCs = {}
+
+local candidateParts = {
+	"Head",
+	"HumanoidRootPart"
+}
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "JanBloxGui"
+screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 999999
+screenGui.Parent = PlayerGui
+
+local mainFrame = Instance.new("Frame", screenGui)
+mainFrame.Size = UDim2.new(0, 260, 0, 500)
+mainFrame.Position = UDim2.new(0.1, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = false
+
+local mainCorner = Instance.new("UICorner", mainFrame)
+mainCorner.CornerRadius = UDim.new(0, 8)
+
+local mainHeaderTitle = Instance.new("TextLabel", mainFrame)
+mainHeaderTitle.Size = UDim2.new(1, 0, 0, 35)
+mainHeaderTitle.Position = UDim2.new(0, 0, 0, 0)
+mainHeaderTitle.Text = "JanBlox Gui V2"
+mainHeaderTitle.TextColor3 = Color3.new(1, 1, 1)
+mainHeaderTitle.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mainHeaderTitle.Font = Enum.Font.SourceSansBold
+mainHeaderTitle.TextSize = 16
+mainHeaderTitle.BorderSizePixel = 0
+
+local headerCorner = Instance.new("UICorner", mainHeaderTitle)
+headerCorner.CornerRadius = UDim.new(0, 8)
+
+local headerFlattener = Instance.new("Frame", mainHeaderTitle)
+headerFlattener.Size = UDim2.new(1, 0, 0, 8)
+headerFlattener.Position = UDim2.new(0, 0, 1, -8)
+headerFlattener.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+headerFlattener.BorderSizePixel = 0
+headerFlattener.ZIndex = 0
+
+local scrollFrame = Instance.new("ScrollingFrame", mainFrame)
+scrollFrame.Size = UDim2.new(1, 0, 1, -43)
+scrollFrame.Position = UDim2.new(0, 0, 0, 39)
+scrollFrame.BackgroundTransparency = 1
+scrollFrame.BorderSizePixel = 0
+scrollFrame.ScrollBarThickness = 4
+scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+scrollFrame.Visible = true
+
+local layout = Instance.new("UIListLayout", scrollFrame)
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding = UDim.new(0, 6)
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local toggleBtn = Instance.new("TextButton", screenGui)
+toggleBtn.Name = "OpenCloseButton"
+toggleBtn.Size = UDim2.new(0, 110, 0, 40)
+toggleBtn.Position = UDim2.new(0.1, 0, 0.03, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+toggleBtn.TextColor3 = Color3.new(1, 1, 1)
+toggleBtn.Font = Enum.Font.SourceSansBold
+toggleBtn.TextSize = 14
+toggleBtn.Text = "Toggle Menu"
+toggleBtn.BorderSizePixel = 0
+toggleBtn.ZIndex = 100
+
+local btnCorner = Instance.new("UICorner", toggleBtn)
+btnCorner.CornerRadius = UDim.new(0, 6)
+
+local function makeSmoothDraggable(frame, handle)
+	handle = handle or frame
+	local dragging, dragInput, dragStart, startPos
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	RunService.Heartbeat:Connect(function()
+		if dragging and dragInput then
+			local delta = dragInput.Position - dragStart
+			local targetPos = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			frame.Position = frame.Position:Lerp(targetPos, 0.25)
+		end
+	end)
+end
+
+makeSmoothDraggable(toggleBtn)
+makeSmoothDraggable(mainFrame, mainHeaderTitle)
+
+local layoutOrderCounter = 0
+
+local function addTitle(text)
+	layoutOrderCounter = layoutOrderCounter + 1
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.new(0.92, 0, 0, 30)
+	t.Text = text
+	t.TextColor3 = Color3.new(1, 1, 1)
+	t.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	t.Font = Enum.Font.SourceSansBold
+	t.TextSize = 14
+	t.LayoutOrder = layoutOrderCounter
+	t.Parent = scrollFrame
+
+	local c = Instance.new("UICorner", t)
+	c.CornerRadius = UDim.new(0, 5)
+	return t
+end
+
+local function addBtn(text)
+	layoutOrderCounter = layoutOrderCounter + 1
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.new(0.92, 0, 0, 35)
+	btn.Text = text
+	btn.TextColor3 = Color3.new(1, 1, 1)
+	btn.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
+	btn.Font = Enum.Font.SourceSans
+	btn.TextSize = 13
+	btn.LayoutOrder = layoutOrderCounter
+	btn.BorderSizePixel = 0
+	btn.Parent = scrollFrame
+
+	local c = Instance.new("UICorner", btn)
+	c.CornerRadius = UDim.new(0, 5)
+
+	btn.MouseEnter:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(80, 80, 80) }):Play()
+	end)
+
+	btn.MouseLeave:Connect(function()
+		TweenService:Create(btn, TweenInfo.new(0.2), { BackgroundColor3 = Color3.fromRGB(65, 65, 65) }):Play()
+	end)
+
+	return btn
+end
+
+local function addStatControl(labelPrefix, defaultValue)
+	layoutOrderCounter = layoutOrderCounter + 1
+
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(0.92, 0, 0, 35)
+	container.BackgroundTransparency = 1
+	container.LayoutOrder = layoutOrderCounter
+	container.Parent = scrollFrame
+
+	local label = Instance.new("TextLabel", container)
+	label.Size = UDim2.new(0.5, 0, 1, 0)
+	label.Text = labelPrefix .. ": " .. defaultValue
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(65, 65, 65)
+	label.Font = Enum.Font.SourceSans
+	label.TextSize = 13
+
+	local lc = Instance.new("UICorner", label)
+	lc.CornerRadius = UDim.new(0, 5)
+
+	local minusBtn = Instance.new("TextButton", container)
+	minusBtn.Size = UDim2.new(0.22, 0, 1, 0)
+	minusBtn.Position = UDim2.new(0.53, 0, 0, 0)
+	minusBtn.Text = "-"
+	minusBtn.TextColor3 = Color3.new(1, 1, 1)
+	minusBtn.BackgroundColor3 = Color3.fromRGB(85, 45, 45)
+	minusBtn.Font = Enum.Font.SourceSansBold
+	minusBtn.TextSize = 16
+
+	local mc = Instance.new("UICorner", minusBtn)
+	mc.CornerRadius = UDim.new(0, 5)
+
+	local plusBtn = Instance.new("TextButton", container)
+	plusBtn.Size = UDim2.new(0.22, 0, 1, 0)
+	plusBtn.Position = UDim2.new(0.78, 0, 0, 0)
+	plusBtn.Text = "+"
+	plusBtn.TextColor3 = Color3.new(1, 1, 1)
+	plusBtn.BackgroundColor3 = Color3.fromRGB(45, 85, 45)
+	plusBtn.Font = Enum.Font.SourceSansBold
+	plusBtn.TextSize = 16
+
+	local pc = Instance.new("UICorner", plusBtn)
+	pc.CornerRadius = UDim.new(0, 5)
+
+	return label, minusBtn, plusBtn
+end
+
+local rejoinBtn = addBtn("Rejoin Server")
+
+addTitle("Hitbox Configuration")
+local globalHitboxBtn = addBtn("Toggle Hitboxes: ON")
+local hitBtn = addBtn("Hitbox: OFF")
+local sizeBtn = addBtn("Size: 5")
+local hitTransBtn = addBtn("Hitbox Transparency: 0.5")
+
+addTitle("NPC Configuration")
+local npcHitBtn = addBtn("NPC Hitbox: OFF")
+local npcSizeBtn = addBtn("NPC Size: 5")
+local npcTransBtn = addBtn("NPC Transparency: 0.5")
+
+addTitle("ESP Configuration")
+local teamBtn = addBtn("Team Check: OFF")
+local espBtn = addBtn("ESP: OFF")
+local transBtn = addBtn("ESPTransparency: 0.5")
+
+addTitle("Player Configuration")
+local wsLabel, wsMinus, wsPlus = addStatControl("WS", 16)
+local jpLabel, jpMinus, jpPlus = addStatControl("JP", 50)
+local bypassBtn = addBtn("Toggle Bypass WS/JP: ON")
+local autoJumpBtn = addBtn("Mobile AutoJump: OFF")
+local resetBtn = addBtn("Reset")
+
+local function savePartState(char, part, storage)
+	if not storage[char] then
+		storage[char] = {}
+	end
+
+	if not storage[char][part.Name] then
+		storage[char][part.Name] = {
+			Size = part.Size,
+			Transparency = part.Transparency,
+			CanCollide = part.CanCollide,
+			CanTouch = part.CanTouch,
+			CanQuery = part.CanQuery,
+			Massless = part.Massless
+		}
+	end
+end
+
+local function restorePart(char, partName, storage)
+	local charStorage = storage[char]
+	if not charStorage then
+		return
+	end
+
+	local data = charStorage[partName]
+	if not data then
+		return
+	end
+
+	local part = char:FindFirstChild(partName)
+	if not part then
+		return
+	end
+
+	part.Size = data.Size
+	part.Transparency = data.Transparency
+	part.CanCollide = data.CanCollide
+	part.CanTouch = data.CanTouch
+	part.CanQuery = data.CanQuery
+	part.Massless = data.Massless
+end
+
+local function restoreAllCandidateParts(char, storage)
+	for _, partName in ipairs(candidateParts) do
+		restorePart(char, partName, storage)
+	end
+end
+
+local function isAliveCharacter(char)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	return hum ~= nil and hum.Health > 0 and hum:GetState() ~= Enum.HumanoidStateType.Dead
+end
+
+local function destroyESP(char)
+	local hl = char:FindFirstChild("ESPHighlight")
+	if hl then
+		hl:Destroy()
+	end
+
+	local head = char:FindFirstChild("Head")
+	if head then
+		local bill = head:FindFirstChild("ESP_UI")
+		if bill then
+			bill:Destroy()
+		end
+	end
+end
+
+local function updateESP(char, playerObj)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+
+	if not isAliveCharacter(char) then
+		destroyESP(char)
+		if hum then
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		end
+		return
+	end
+
+	local showESP = config.ESPEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team)
+
+	if not showESP then
+		destroyESP(char)
+		if hum then
+			hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		end
+		return
+	end
+
+	if hum then
+		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	end
+
+	local head = char:FindFirstChild("Head")
+	if not head then
+		return
+	end
+
+	for _, child in ipairs(char:GetChildren()) do
+		if child:IsA("Highlight") and child.Name ~= "ESPHighlight" then
+			child:Destroy()
+		end
+	end
+
+	local hl = char:FindFirstChild("ESPHighlight")
+	if not hl then
+		hl = Instance.new("Highlight")
+		hl.Name = "ESPHighlight"
+		hl.Parent = char
+	end
+
+	hl.FillTransparency = config.ESPTransparency
+	hl.OutlineTransparency = config.ESPTransparency
+
+	local bill = head:FindFirstChild("ESP_UI")
+	if not bill then
+		bill = Instance.new("BillboardGui")
+		bill.Name = "ESP_UI"
+		bill.AlwaysOnTop = true
+		bill.Size = UDim2.new(0, 140, 0, 30)
+		bill.StudsOffset = Vector3.new(0, 2.5, 0)
+		bill.Parent = head
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Name = "InfoLabel"
+		lbl.Size = UDim2.new(1, 0, 1, 0)
+		lbl.BackgroundTransparency = 1
+		lbl.TextColor3 = Color3.new(1, 1, 1)
+		lbl.TextSize = 13
+		lbl.Font = Enum.Font.SourceSansBold
+		lbl.TextStrokeTransparency = 0
+		lbl.Parent = bill
+	end
+
+	local status = (hum and hum.Health > 0) and (math.floor(hum.Health) .. " HP") or "DEAD"
+	local label = bill:FindFirstChild("InfoLabel")
+	if label then
+		label.Text = playerObj.Name .. " [" .. status .. "]"
+	end
+end
+
+local function handlePlayerHitbox(char, playerObj)
+	local alive = isAliveCharacter(char)
+
+	if not alive then
+		restoreAllCandidateParts(char, originalPlayerSizes)
+		destroyESP(char)
+		return
+	end
+
+	if config.GlobalHitboxToggle and config.HitboxEnabled and (not config.TeamCheck or playerObj.Team ~= LocalPlayer.Team) then
+		pcall(function()
+			for _, partName in ipairs(candidateParts) do
+				local targetPart = char:FindFirstChild(partName)
+				if targetPart then
+					savePartState(char, targetPart, originalPlayerSizes)
+					
+					-- Only expand Head size visually, keep HumanoidRootPart hidden
+					if partName == "Head" then
+						targetPart.Size = Vector3.new(config.HitboxSize, config.HitboxSize, config.HitboxSize)
+						targetPart.Transparency = config.HitboxTransparency
+					elseif partName == "HumanoidRootPart" then
+						-- Expand hitbox but keep transparency at 1 to hide it
+						targetPart.Size = Vector3.new(config.HitboxSize * 1.2, config.HitboxSize * 1.2, config.HitboxSize * 1.2)
+						targetPart.Transparency = 1
+					end
+					
+					targetPart.CanCollide = false
+					targetPart.Massless = true
+					targetPart.CanTouch = true
+				end
+			end
+		end)
+	else
+		restoreAllCandidateParts(char, originalPlayerSizes)
+	end
+end
+
+local function handleNPCHitbox(char)
+	if char == LocalPlayer.Character then
+		return
+	end
+
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead then
+		restoreAllCandidateParts(char, originalNPCSizes)
+		return
+	end
+
+	if config.GlobalHitboxToggle and config.NPCHitboxEnabled then
+		pcall(function()
+			for _, partName in ipairs(candidateParts) do
+				local targetPart = char:FindFirstChild(partName)
+				if targetPart then
+					savePartState(char, targetPart, originalNPCSizes)
+					
+					if partName == "Head" then
+						targetPart.Size = Vector3.new(config.NPCHitboxSize, config.NPCHitboxSize, config.NPCHitboxSize)
+						targetPart.Transparency = config.NPCHitboxTransparency
+					elseif partName == "HumanoidRootPart" then
+						targetPart.Size = Vector3.new(config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2, config.NPCHitboxSize * 1.2)
+						targetPart.Transparency = 1
+					end
+					
+					targetPart.CanCollide = false
+					targetPart.Massless = true
+					targetPart.CanTouch = true
+				end
+			end
+		end)
+	else
+		restoreAllCandidateParts(char, originalNPCSizes)
+	end
+end
+
+local function updateNPCCache()
+	local currentNPCs = {}
+
+	for _, desc in ipairs(workspace:GetDescendants()) do
+		if desc:IsA("Humanoid") then
+			local model = desc.Parent
+			if model and model:IsA("Model") and model ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(model) then
+				table.insert(currentNPCs, model)
+			end
+		end
+	end
+
+	cachedNPCs = currentNPCs
+end
+
+local function refreshAllPlayers()
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= LocalPlayer and p.Character then
+			updateESP(p.Character, p)
+			handlePlayerHitbox(p.Character, p)
+		end
+	end
+end
+
+local function refreshAllNPCs()
+	updateNPCCache()
+	for i = 1, #cachedNPCs do
+		local npc = cachedNPCs[i]
+		if npc and npc.Parent then
+			handleNPCHitbox(npc)
+		end
+	end
+end
